@@ -1,0 +1,132 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% a negative value: warned about, the flow is dropped
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 4, b -> c : -2}
+\end{sankey}
+\TestEq{negative dropped}{\sankeyFlowCount}{1}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlow{a}{b}{-1}
+  \sankeyFlow{a}{b}{0}
+\end{sankey}
+\TestEq{zero is fine}{\sankeyFlowCount}{1}
+\end{tikzpicture}
+% unknown nodes without auto nodes
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[auto nodes=false]
+  \sankeyNode{a}
+  \sankeyFlows{a -> b : 4}
+  \sankeyFlow{x}{a}{1}
+\end{sankey}
+\TestEq{unknown dropped}{\sankeyFlowCount}{0}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[auto nodes=false]
+  \sankeyNodes{a, b}
+  \sankeyFlows{a -> b : 4}
+\end{sankey}
+\TestEq{declared are fine}{\sankeyFlowCount}{1}
+\end{tikzpicture}
+% a flow that runs backwards
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[column=2]{a}
+  \sankeyNode[column=1]{b}
+  \sankeyFlows{a -> b : 4}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[column=1]{a}
+  \sankeyNode[column=1]{b}
+  \sankeyFlows{a -> b : 4}
+\end{sankey}
+\end{tikzpicture}
+% environments cannot be nested
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 4}
+  \begin{sankey}
+    \sankeyFlows{c -> d : 4}
+  \end{sankey}
+\end{sankey}
+\end{tikzpicture}
+% commands outside of an environment
+\sankeyNode{a}
+\sankeyNodes{a, b}
+\sankeyFlow{a}{b}{1}
+\sankeyFlows{a -> b : 1}
+\sankeyAlluvium{a, b}{1}
+\sankeyGroup{g}
+\sankeyColumnTitle{0}{Title}
+% choices
+\sankeySetup{align=middle}
+\sankeySetup{layout=diagonal}
+\sankeySetup{node order=random}
+\sankeySetup{flow order=random}
+\sankeySetup{port align=bottom}
+\sankeySetup{direction=sideways}
+\sankeySetup{label position=middle}
+\sankeySetup{value label position=middle}
+\sankeySetup{flow fade=maybe}
+\sankeySetup{legend=middle}
+\sankeySetup{legend for=colors}
+\begin{tikzpicture}\sankeySetup{base}
+\sankeyStart[at={(0pt,0pt)}]{r}{3}
+\sankeyRoute{r}{label side=up}
+\sankeyRoute{r}{fade=sometimes}
+\end{tikzpicture}
+% every valid choice is accepted
+\begin{tikzpicture}\sankeySetup{base}
+\sankeySetup{align=top, align=center, align=bottom, layout=left, layout=justify,
+  node order=declaration, node order=decreasing, node order=increasing,
+  flow order=sorted, flow order=group, flow order=declaration, port align=top, port align=center,
+  direction=right, direction=down, direction=left, direction=up,
+  label position=auto, label position=before, label position=after, label position=inside,
+  label position=none, label position=left, label position=right, label position=above, label position=below,
+  flow fade=none, flow fade=in, flow fade=out, flow fade=both,
+  legend=none, legend=right, legend=below, legend=above, legend=left, legend for=groups, legend for=nodes}
+\end{tikzpicture}
+% a node can not be smaller than what flows through it
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[value=5]{b}
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestEq{grows}{\sankeyNodeInfo{b}{value}}{10}
+\TestDim{grows height}{\sankeyNodeInfo{b}{height}}{10pt}{0.01pt}
+\end{tikzpicture}
+% no room: the gaps need more than the height
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[height=3pt, unit=, node sep=5pt]
+  \sankeyFlows{a -> b : 4, a -> c : 4}
+\end{sankey}
+\end{tikzpicture}
+% nothing to draw
+\begin{tikzpicture}
+\begin{sankey}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 0}
+\end{sankey}
+\end{tikzpicture}
+% split parts wider than the route
+\begin{tikzpicture}\sankeySetup{base}
+\sankeyStart[at={(0pt,0pt)}]{r}{10}
+\sankeySplit{r}{a=6, b=6}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\sankeyStart[at={(0pt,0pt)}]{r}{10}
+\sankeySplit{r}{a=6, b=4}
+\end{tikzpicture}
+\END
+\end{document}

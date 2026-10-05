@@ -1,0 +1,42 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% braces protect commas, colons and arrows in names; macros in names and values expand;
+% a trailing comma, a closing brace on its own line and keys with commas and colons are fine
+\def\src{cat}\def\val{2+3}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{
+     {a, b} -> c : 1,
+     \src -> {sofa: big} : \val,
+     x[label={y, z}, color=red] -> c : 2 [style={draw=red}, tint=50],
+     {d -> e} -> c : 1,
+     p -> q : {3*2},
+     n[0] -> q : 1 [group=g:1],
+  }
+\end{sankey}
+\TestEq{count}{\sankeyFlowCount}{6}
+\TestEq{braced comma}{\sankeyFlowInfo{1}{from}}{a, b}
+\TestEq{macro name}{\sankeyFlowInfo{2}{from}}{cat}
+\TestEq{braced colon}{\sankeyFlowInfo{2}{to}}{sofa: big}
+\TestEq{macro value}{\sankeyFlowInfo{2}{value}}{5}
+\TestEq{inline keys}{\sankeyNodeInfo{x}{color}}{red}
+\TestEq{braced arrow}{\sankeyFlowInfo{4}{from}}{d -> e}
+\TestEq{braced value}{\sankeyFlowInfo{5}{value}}{6}
+\TestEq{inline column}{\sankeyNodeInfo{n}{column}}{0}
+\TestEq{colon in keys}{\sankeyFlowInfo{6}{group}}{g:1}
+\end{tikzpicture}
+% errors: no value, no target, a second colon; each gives one error and nothing else
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b}
+  \sankeyFlows{a : 3}
+  \sankeyFlows{a -> b : 1 : 2}
+  \sankeyFlows{ok -> fine : 1}
+\end{sankey}
+\TestEq{only the good flow}{\sankeyFlowCount}{1}
+\end{tikzpicture}
+\END

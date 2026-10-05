@@ -1,0 +1,14 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% siunitx is not loaded: one error, the number format stays
+\begin{tikzpicture}\sankeySetup{base}
+\sankeySetup{siunitx}
+\end{tikzpicture}
+\sbox0{\sankeyNumber{3.14159}}\sbox2{3.14}
+\TestDim{number format unchanged}{\wd0}{\wd2}{0.01pt}
+\END
+\end{document}

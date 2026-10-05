@@ -1,0 +1,76 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\ExplSyntaxOn
+\int_new:N \l_sankeytest_way_int
+\NewDocumentCommand \CountWaypoints { }
+  {
+    \int_zero:N \l_sankeytest_way_int
+    \seq_map_inline:Nn \g__sankey_nodes_seq
+      { \__sankey_has:nnT { dummy } {##1} { \int_incr:N \l_sankeytest_way_int } }
+  }
+\NewExpandableDocumentCommand \Ways { } { \int_use:N \l_sankeytest_way_int }
+\NewDocumentCommand \TestDiffer { m m m }
+  { \dim_compare:nNnT {#2} = {#3} { \msg_error:nneee { sankey-test } { fail } { \tl_to_str:n {#1} } { \dim_eval:n {#2} } { different } } }
+\NewDocumentCommand \TestWaypoint { m m m }
+  {
+    \__sankey_has:nnF { dummy } {#2} { \msg_error:nneee { sankey-test } { fail } { \tl_to_str:n {#1} } { missing } { waypoint~#2 } }
+    \TestEq { #1~value } { \sankeyNodeInfo {#2} { value } } {#3}
+  }
+\ExplSyntaxOff
+\def\Alarm{\sankeyFlows{alarm -> snooze : 3, alarm -> up : 2, snooze -> late : 2, snooze -> up : 1, up -> late : 2}}
+% waypoints in the skipped columns, with the value of the flow and without labels
+\begin{tikzpicture}
+\begin{sankey}[name prefix=lf1-, values]
+  \Alarm
+\end{sankey}
+\CountWaypoints
+\TestEq{two waypoints}{\Ways}{2}
+\TestWaypoint{alarm to up}{sankey@way@2@1}{2}
+\TestWaypoint{snooze to late}{sankey@way@3@1}{2}
+\TestEq{way column 1}{\sankeyNodeInfo{sankey@way@2@1}{column}}{1}
+\TestEq{way column 2}{\sankeyNodeInfo{sankey@way@3@1}{column}}{2}
+\TestNo{no label way 1}{lf1-sankey@way@2@1-label}
+\TestNo{no label way 2}{lf1-sankey@way@3@1-label}
+\TestNo{no value way 1}{lf1-sankey@way@2@1-value}
+\TestHas{real label}{lf1-up-label}
+\TestEq{whole flow from}{\sankeyFlowInfo{2}{from}}{alarm}
+\TestEq{whole flow to}{\sankeyFlowInfo{2}{to}}{up}
+\TestEq{whole flow value}{\sankeyFlowInfo{2}{value}}{2}
+\CheckInvariants{lf1-}
+\ExplSyntaxOn
+\__sankey_has:nnF { fsa } { 2 } { \msg_error:nneee { sankey-test } { fail } { start~set } { no } { yes } }
+\__sankey_has:nnF { fsb } { 2 } { \msg_error:nneee { sankey-test } { fail } { end~set } { no } { yes } }
+\__sankey_has:nnF { fsa } { 3 } { \msg_error:nneee { sankey-test } { fail } { start~3~set } { no } { yes } }
+\__sankey_has:nnF { fsb } { 3 } { \msg_error:nneee { sankey-test } { fail } { end~3~set } { no } { yes } }
+\ExplSyntaxOff
+\end{tikzpicture}
+% direct flows have no waypoints
+\begin{tikzpicture}
+\begin{sankey}[name prefix=lf2-, long flows=direct]
+  \Alarm
+\end{sankey}
+\CountWaypoints
+\TestEq{no waypoints}{\Ways}{0}
+\CheckInvariants{lf2-}
+\end{tikzpicture}
+% relaxation moves nodes, the invariants stay
+\begin{tikzpicture}
+\begin{sankey}[name prefix=lf3-, relax=0]
+  \Alarm
+\end{sankey}
+\CheckInvariants{lf3-}
+\xdef\topzero{\sankeyNodeInfo{up}{top}}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{sankey}[name prefix=lf4-, relax=8]
+  \Alarm
+\end{sankey}
+\CheckInvariants{lf4-}
+\TestDiffer{relax moves up}{\topzero}{\sankeyNodeInfo{up}{top}}
+\end{tikzpicture}
+\END
+\end{document}

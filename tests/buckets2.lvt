@@ -1,0 +1,52 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% a flow between neighbouring buckets of one column: both ends are set
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[buckets, name prefix=c1-, height=100pt]
+  \sankeyFlows{clean@3 -> clean@4 : 2}
+\end{sankey}
+\TestEq{neighbour value}{\sankeyFlowInfo{1}{value}}{2}
+\TestEq{neighbour same column}{\sankeyNodeInfo{clean@3}{column}}{\sankeyNodeInfo{clean@4}{column}}
+\TestEq{neighbour out}{\sankeyNodeInfo{clean@3}{out}}{2}
+\TestEq{neighbour in}{\sankeyNodeInfo{clean@4}{in}}{2}
+\TestDim{neighbour start}{\sankeyFlowInfo{1}{start}}{\sankeyNodeInfo{clean@3}{top}}{0.05pt}
+\TestDim{neighbour end}{\sankeyFlowInfo{1}{end}}{\sankeyNodeInfo{clean@4}{top}}{0.05pt}
+\CheckInvariants{}
+\end{tikzpicture}
+% a far self loop
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[buckets, name prefix=c2-, height=100pt]
+  \sankeyFlows{clean@3 -> clean@8 : 2}
+\end{sankey}
+\TestDim{far start}{\sankeyFlowInfo{1}{start}}{\sankeyNodeInfo{clean@3}{top}}{0.05pt}
+\TestDim{far end}{\sankeyFlowInfo{1}{end}}{\sankeyNodeInfo{clean@8}{top}}{0.05pt}
+\TestEq{far out}{\sankeyNodeInfo{clean@3}{out}}{2}
+\TestEq{far in}{\sankeyNodeInfo{clean@8}{in}}{2}
+\CheckInvariants{}
+\end{tikzpicture}
+% the default settings, a neighbouring and a far loop, next to other flows
+\begin{tikzpicture}
+\begin{sankey}[buckets, name prefix=c3-, height=100pt]
+  \sankeyFlows{clean@3 -> clean@4 : 2, clean@4 -> clean@9 : 1, clean@3 -> other@2 : 3,
+    src@4 -> clean@4 : 2, clean@9 -> sink@9 : 1}
+\end{sankey}
+\TestEq{value loop 1}{\sankeyFlowInfo{1}{value}}{2}
+\TestEq{value loop 2}{\sankeyFlowInfo{2}{value}}{1}
+\TestEq{bucket in}{\sankeyNodeInfo{clean@4}{in}}{4}
+\TestEq{bucket out}{\sankeyNodeInfo{clean@4}{out}}{1}
+\CheckInvariants{}
+\end{tikzpicture}
+% a loop in the other directions
+\begin{tikzpicture}
+\begin{sankey}[buckets, name prefix=c4-, direction=down, height=100pt]
+  \sankeyFlows{clean@4 -> clean@3 : 2, clean@2 -> clean@3 : 1}
+\end{sankey}
+\TestEq{up in}{\sankeyNodeInfo{clean@3}{in}}{3}
+\CheckInvariants{}
+\end{tikzpicture}
+\END
+\end{document}

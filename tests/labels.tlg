@@ -1,0 +1,26 @@
+This is a generated file for the l3build validation system.
+Don't change this file in any respect.
+name a
+num 40.12
+num 30
+num 10.12
+name b
+name c
+a
+pct 100
+b
+pct 75
+c
+pct 25
+a
+pct 100
+b
+pct 75
+c
+pct 25
+a
+pct 100
+b
+pct 75
+c
+pct 25

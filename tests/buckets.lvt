@@ -1,0 +1,82 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% two columns with the default 10 buckets; the value is the largest in/out of a bucket
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[buckets, name prefix=b1-, height=100pt]
+  \sankeyFlows{a@1 -> b@2 : 3, a@1 -> b@3 : 2, a@2 -> b@3 : 4}
+\end{sankey}
+\TestEq{value a@1}{\sankeyNodeInfo{a@1}{value}}{5}
+\TestEq{value b@3}{\sankeyNodeInfo{b@3}{value}}{6}
+\TestEq{column a}{\sankeyNodeInfo{a@1}{column}}{0}
+\TestEq{column b}{\sankeyNodeInfo{b@2}{column}}{1}
+\TestDim{height}{\sankeyNodeInfo{a@1}{height}}{10pt}{0.01pt}
+\TestDim{top a@1}{\sankeyNodeInfo{a@1}{top}}{0pt}{0.01pt}
+\TestDim{top b@3}{\sankeyNodeInfo{b@3}{top}}{20pt}{0.01pt}
+\TestHas{column node a}{b1-a}
+\TestHas{column node b}{b1-b}
+\end{tikzpicture}
+% a column has its own number of buckets: its buckets are as tall as the height divided by it
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[buckets, name prefix=b2-, bucket count=4, height=80pt]
+  \sankeyColumn[buckets=2]{b}
+  \sankeyFlows{a@1 -> b@1 : 1, a@4 -> b@2 : 1}
+\end{sankey}
+\TestDim{a bucket}{\sankeyNodeInfo{a@4}{height}}{20pt}{0.01pt}
+\TestDim{a top}{\sankeyNodeInfo{a@4}{top}}{60pt}{0.01pt}
+\TestDim{b bucket}{\sankeyNodeInfo{b@2}{height}}{40pt}{0.01pt}
+\TestDim{b top}{\sankeyNodeInfo{b@2}{top}}{40pt}{0.01pt}
+\end{tikzpicture}
+% bucket value, columns by declaration and by appearance
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[buckets, name prefix=b3-, bucket count=2, bucket value=10]
+  \sankeyColumn[label=Last, color=red]{z}
+  \sankeyColumn{y}
+  \sankeyFlows{z@1 -> y@1 : 2, y@2 -> x@1 : 1, x@1 -> w@2 : 1}
+\end{sankey}
+\TestEq{z first}{\sankeyNodeInfo{z@1}{column}}{0}
+\TestEq{y second}{\sankeyNodeInfo{y@1}{column}}{1}
+\TestEq{x third}{\sankeyNodeInfo{x@1}{column}}{2}
+\TestEq{w fourth}{\sankeyNodeInfo{w@2}{column}}{3}
+\TestEq{z color}{\sankeyNodeInfo{z@1}{color}}{red}
+\TestEq{y color}{\sankeyNodeInfo{y@1}{color}}{sankey-2}
+\TestHas{column z}{b3-z}
+\TestHas{column w}{b3-w}
+\end{tikzpicture}
+% fills and loops
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[buckets, name prefix=b4-, bucket fill=none, loop size=10pt]
+  \sankeyFlows{import@4 -> import@6 : 2, import@1 -> export@1 : 1}
+\end{sankey}
+\TestEq{loop value}{\sankeyFlowInfo{1}{value}}{2}
+\TestEq{loop in}{\sankeyNodeInfo{import@6}{in}}{2}
+\TestEq{loop out}{\sankeyNodeInfo{import@4}{out}}{2}
+\TestDim{loop start}{\sankeyFlowInfo{1}{start}}{\sankeyNodeInfo{import@4}{top}}{0.01pt}
+\TestDim{loop end}{\sankeyFlowInfo{1}{end}}{\sankeyNodeInfo{import@6}{top}}{0.01pt}
+\TestEq{loop same column}{\sankeyNodeInfo{import@6}{column}}{\sankeyNodeInfo{import@4}{column}}
+\end{tikzpicture}
+% the preset
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[bucket bars, name prefix=b5-, bucket count=3]
+  \sankeyFlows{a@1 -> b@3 : 1}
+\end{sankey}
+\TestHas{preset column}{b5-a}
+\TestEq{preset value}{\sankeyNodeInfo{b@3}{value}}{1}
+\end{tikzpicture}
+% a name without a number is an error and dropped with its flows
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[buckets, name prefix=b6-]
+  \sankeyFlows{a@1 -> oops : 1, oops -> b@1 : 1, a@1 -> b@1 : 2}
+\end{sankey}
+\TestEq{drop value}{\sankeyNodeInfo{a@1}{out}}{2}
+\end{tikzpicture}
+% a bucket beyond the count
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[buckets, name prefix=b7-, bucket count=3]
+  \sankeyFlows{a@1 -> b@5 : 1}
+\end{sankey}
+\end{tikzpicture}
+\end{document}

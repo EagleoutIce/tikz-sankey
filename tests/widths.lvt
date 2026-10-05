@@ -1,0 +1,110 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\makeatletter
+% \Extent{macro}{first label}{last label}: from the west of the first to the east of the last label
+\newcommand\Extent[3]{\pgfpointanchor{#3}{east}\dimen@=\pgf@x \pgfpointanchor{#2}{west}\advance\dimen@-\pgf@x \edef#1{\the\dimen@}}
+\newcommand\NodeW[2]{\pgfpointanchor{#2}{east}\dimen@=\pgf@x \pgfpointanchor{#2}{west}\advance\dimen@-\pgf@x \xdef#1{\the\dimen@}}
+\makeatother
+% the diagram with its outer labels is as wide as `width'
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w1-, width=200pt, node width=2pt]
+  \sankeyFlows{Source -> Middle : 3, Middle -> Sink node : 3}
+\end{sankey}
+\Extent\ext{w1-Source-label}{w1-Sink node-label}
+\TestDim{whole width}{\ext}{200pt}{1pt}
+\TestLess{inside}{\sankeyNodeInfo{Sink node}{end}}{200pt}
+\end{tikzpicture}
+% a larger width spreads the columns
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w2-, width=300pt, node width=2pt]
+  \sankeyFlows{Source -> Middle : 3, Middle -> Sink node : 3}
+\end{sankey}
+\Extent\exta{w2-Source-label}{w2-Sink node-label}
+\TestDim{whole width 300}{\exta}{300pt}{1pt}
+\TestLess{spread}{\sankeyNodeInfo{Middle}{start}}{\sankeyNodeInfo{Sink node}{start} - 100pt}
+\end{tikzpicture}
+% a legend is part of the width
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w3-, width=200pt, node width=2pt]
+  \sankeyGroup[color=red]{g}
+  \sankeyFlows{Source -> Middle : 3 [group=g], Middle -> Sink node : 3}
+\end{sankey}
+\TestHas{legend}{w3-legend}
+\makeatletter\pgfpointanchor{w3-legend}{east}\xdef\legeast{\the\pgf@x}
+\pgfpointanchor{w3-Source-label}{west}\xdef\labwest{\the\pgf@x}
+\makeatother\TestDim{with legend}{\legeast-\labwest}{200pt}{1pt}
+\end{tikzpicture}
+% in a vertical diagram the width is ignored
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w4-, direction=down, node width=2pt]
+  \sankeyFlows{a -> b : 3}
+\end{sankey}
+\xdef\plainstart{\sankeyNodeInfo{b}{start}}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w5-, direction=down, node width=2pt, width=400pt]
+  \sankeyFlows{a -> b : 3}
+\end{sankey}
+\TestEq{width ignored down}{\sankeyNodeInfo{b}{start}}{\plainstart}
+\end{tikzpicture}
+% node width=auto grows with the labels inside, but not below min node width
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w6-, node width=auto, label position=inside, min node width=2pt]
+  \sankeyFlows{aa -> bb : 3}
+\end{sankey}
+\NodeW\shortw{w6-aa}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w7-, node width=auto, label position=inside, min node width=2pt]
+  \sankeyFlows{aa long label here -> bb : 3}
+\end{sankey}
+\NodeW\longw{w7-aa long label here}
+\TestLess{wider labels, wider nodes}{\shortw}{\longw}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w8-, node width=auto, label position=inside, min node width=30pt]
+  \sankeyFlows{a -> b : 3}
+\end{sankey}
+\NodeW\minw{w8-a}
+\TestDim{min node width}{\minw}{30pt}{0.05pt}
+\end{tikzpicture}
+% the backdrop of the labels does not move the nodes (with a fixed column sep)
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w9-, column sep=60pt, label backdrop=true]
+  \sankeyFlows{Source -> Middle : 3, Middle -> Sink node : 3}
+\end{sankey}
+\xdef\withbackdrop{\sankeyNodeInfo{Sink node}{start}}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{sankey}[name prefix=wa-, column sep=60pt, label backdrop=false]
+  \sankeyFlows{Source -> Middle : 3, Middle -> Sink node : 3}
+\end{sankey}
+\TestEq{backdrop layout}{\sankeyNodeInfo{Sink node}{start}}{\withbackdrop}
+\end{tikzpicture}
+% with a width, a gap with long labels in it grows, so that they do not reach the next column
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w9-, width=240pt, node width=2pt]
+  \sankeyFlows{a -> a rather long label in the middle : 3, a rather long label in the middle -> z : 3}
+\end{sankey}
+\makeatletter\pgfpointanchor{w9-a rather long label in the middle-label}{east}\xdef\labeast{\the\pgf@x}\makeatother
+\TestLess{long label fits}{\labeast}{\sankeyNodeInfo{z}{start}}
+\end{tikzpicture}
+% `legend = auto' puts the legend below when the labels need its room at the right
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w10-, width=150pt, values]
+  \sankeyFlows{fridge -> {snacks, salty} : 12 [group=night], fridge -> snacks sweet : 7.5 [group=day], {snacks, salty} -> couch : 10 [group=night], snacks sweet -> couch : 6 [group=day]}
+\end{sankey}
+\makeatletter\pgfpointanchor{w10-legend}{north}\xdef\legnorth{\the\pgf@y}\pgfpointanchor{w10-fridge}{south}\xdef\fridgesouth{\the\pgf@y}\makeatother
+\TestLess{legend below}{\legnorth}{\fridgesouth}
+\end{tikzpicture}
+% too narrow for the labels: a warning, and the diagram is wider
+\begin{tikzpicture}
+\begin{sankey}[name prefix=w11-, width=60pt]
+  \sankeyFlows{a long label here -> another long one : 1}
+\end{sankey}
+\end{tikzpicture}
+\end{document}

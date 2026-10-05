@@ -1,0 +1,45 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% compass sides of a route label (angle 0: north is left of the route)
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt, label distance=1mm}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{e}{10}
+\sankeyRoute{e}{label side=east, label=E}
+\TestHas{east label}{sankey-e-label}
+\TestAnchor{east}{sankey-e-label}{west}{1mm}{0pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{n}{10}
+\sankeyRoute{n}{label side=north, label=N}
+\TestAnchor{north}{sankey-n-label}{south}{0pt}{5pt+1mm}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{w}{10}
+\sankeyRoute{w}{label side=west, label=W}
+\TestAnchor{west}{sankey-w-label}{east}{-1mm}{0pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{s}{10}
+\sankeyRoute{s}{label side=south, label=S}
+\TestAnchor{south}{sankey-s-label}{north}{0pt}{-5pt-1mm}
+\end{tikzpicture}
+% node width set in the environment options survives the environment
+\begin{tikzpicture}
+\begin{sankey}[unit=1pt, column sep=20pt, node width=7pt]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestDim{start b}{\sankeyNodeInfo{b}{start}}{20pt}{0.01pt}
+\TestDim{end b}{\sankeyNodeInfo{b}{end}}{27pt}{0.01pt}
+\TestDim{end a}{\sankeyNodeInfo{a}{end}}{7pt}{0.01pt}
+\end{tikzpicture}
+% unknown routes: one error each, no cascade
+\begin{tikzpicture}\sankeySetup{base}
+\sankeyRoute{nope}{forward=1pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\sankeyStart[at={(0pt,0pt)}]{r}{10}
+\sankeySplit{nope}{a=5, b=5}
+\sankeyMerge{m}{nope}
+\sankeyRoute{r}{forward=3pt}
+\TestDim{later route still works}{\sankeyRouteInfo{r}{x}}{3pt}{0.01pt}
+\end{tikzpicture}
+\END
+\end{document}

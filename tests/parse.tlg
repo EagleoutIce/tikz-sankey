@@ -1,0 +1,39 @@
+This is a generated file for the l3build validation system.
+Don't change this file in any respect.
+label of a
+label of b
+! Package tikz-sankey Error: Cannot read `a -> b' as a flow; write `from -> to : value' (more nodes chain with `->').
+Type <return> to continue.
+ ...                                              
+l. ...  \sankeyFlows{a -> b}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: Cannot read `a : 3' as a flow; write `from -> to : value' (more nodes chain with `->').
+Type <return> to continue.
+ ...                                              
+l. ...  \sankeyFlows{a : 3}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: Cannot read `a -> b : 1 : 2' as a flow; write `from -> to : value' (more nodes chain with `->').
+Type <return> to continue.
+ ...                                              
+l. ...  \sankeyFlows{a -> b : 1 : 2}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: Cannot read `junk' as a flow; write `from -> to : value' (more nodes chain with `->').
+Type <return> to continue.
+ ...                                              
+l. ...  \sankeyFlows{a -> b : 1, junk, c -> d : 2}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: Cannot read `a' as a flow; write `from -> to : value' (more nodes chain with `->').
+Type <return> to continue.
+ ...                                              
+l. ...  \sankeyAlluvium{a}{3}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.

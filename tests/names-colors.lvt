@@ -1,0 +1,83 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\def\names{}
+\newcommand\RecordName{\xdef\names{\names<\sankeyName>}\sankeyName}
+% the text before @ is shown, and nodes of the same text share their color
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[label=\RecordName, name prefix=n1-]
+  \sankeyFlows{happy@mon -> happy@tue : 2, happy@mon -> sad@tue : 1, sad@mon -> sad@tue : 3}
+\end{sankey}
+\TestEq{names}{\names}{<happy><sad><happy><sad>}
+\TestEq{happy shared}{\sankeyNodeInfo{happy@mon}{color}}{\sankeyNodeInfo{happy@tue}{color}}
+\TestEq{sad shared}{\sankeyNodeInfo{sad@mon}{color}}{\sankeyNodeInfo{sad@tue}{color}}
+\TestEq{happy first}{\sankeyNodeInfo{happy@mon}{color}}{sankey-1}
+\TestEq{sad second}{\sankeyNodeInfo{sad@tue}{color}}{sankey-2}
+\TestEq{column mon}{\sankeyNodeInfo{happy@mon}{column}}{0}
+\TestEq{column tue}{\sankeyNodeInfo{sad@tue}{column}}{1}
+\end{tikzpicture}
+% node color=column: a palette color per column, shades of it down the column
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node color=column, column shades=40]
+  \sankeyFlows{a -> x : 1, b -> x : 1, c -> y : 1}
+\end{sankey}
+\TestEq{a full}{\sankeyNodeInfo{a}{color}}{sankey@column@0!100}
+\TestEq{b mid}{\sankeyNodeInfo{b}{color}}{sankey@column@0!70}
+\TestEq{c last}{\sankeyNodeInfo{c}{color}}{sankey@column@0!40}
+\TestEq{x full}{\sankeyNodeInfo{x}{color}}{sankey@column@1!100}
+\TestEq{y last}{\sankeyNodeInfo{y}{color}}{sankey@column@1!40}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node color=column, column shades=20]
+  \sankeyNode[color=red]{b}
+  \sankeyFlows{a -> x : 1, b -> x : 1}
+\end{sankey}
+\TestEq{a last, b was declared first}{\sankeyNodeInfo{a}{color}}{sankey@column@0!20}
+\TestEq{own color kept}{\sankeyNodeInfo{b}{color}}{red}
+\end{tikzpicture}
+% groups: group node color auto keeps the palette, a color paints the nodes
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=g1-]
+  \sankeyGroup[color=red]{g}
+  \sankeyFlows{a -> b : 1 [group=g], a -> c : 1}
+\end{sankey}
+\TestEq{auto a}{\sankeyNodeInfo{a}{color}}{sankey-1}
+\TestEq{auto b}{\sankeyNodeInfo{b}{color}}{sankey-2}
+\TestEq{group color}{\sankeyGroupColor{g}}{red}
+\TestHas{legend}{g1-legend}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=g2-, group node color=gray]
+  \sankeyGroup[color=red]{g}
+  \sankeyFlows{a -> b : 1 [group=g], a -> c : 1}
+\end{sankey}
+\TestEq{painted a}{\sankeyNodeInfo{a}{color}}{gray}
+\TestEq{painted b}{\sankeyNodeInfo{b}{color}}{gray}
+\TestEq{painted c}{\sankeyNodeInfo{c}{color}}{gray}
+\end{tikzpicture}
+% without groups the key does nothing
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=g3-, group node color=gray]
+  \sankeyFlows{a -> b : 1}
+\end{sankey}
+\TestEq{no groups a}{\sankeyNodeInfo{a}{color}}{sankey-1}
+\TestNo{no legend}{g3-legend}
+\end{tikzpicture}
+% legend=none, and a legend of the nodes needs no groups
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=g4-, legend=none]
+  \sankeyGroup[color=red]{g}
+  \sankeyFlows{a -> b : 1 [group=g]}
+\end{sankey}
+\TestNo{legend none}{g4-legend}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=g5-, legend=below, legend for=nodes]
+  \sankeyFlows{a -> b : 1}
+\end{sankey}
+\TestHas{legend for nodes}{g5-legend}
+\end{tikzpicture}
+\end{document}

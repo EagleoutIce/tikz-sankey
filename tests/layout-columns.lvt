@@ -1,0 +1,88 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% automatic columns: one right of the farthest source
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b -> c : 10, a -> d : 5, x -> c : 3}
+\end{sankey}
+\TestEq{auto a}{\sankeyNodeInfo{a}{column}}{0}
+\TestEq{auto b}{\sankeyNodeInfo{b}{column}}{1}
+\TestEq{auto c longest path}{\sankeyNodeInfo{c}{column}}{2}
+\TestEq{auto d}{\sankeyNodeInfo{d}{column}}{1}
+\TestEq{auto x}{\sankeyNodeInfo{x}{column}}{0}
+\TestDim{start col 0}{\sankeyNodeInfo{a}{start}}{0pt}{0.01pt}
+\TestDim{start col 2}{\sankeyNodeInfo{c}{start}}{100pt}{0.01pt}
+\TestDim{end col 2}{\sankeyNodeInfo{c}{end}}{102pt}{0.01pt}
+\end{tikzpicture}
+% explicit columns win and push later nodes along
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[column=3]{d}
+  \sankeyNode[column={1+1}]{b}
+  \sankeyFlows{a -> b : 4, a -> d : 4, d -> e : 2}
+\end{sankey}
+\TestEq{explicit d}{\sankeyNodeInfo{d}{column}}{3}
+\TestEq{expression b}{\sankeyNodeInfo{b}{column}}{2}
+\TestEq{e after d}{\sankeyNodeInfo{e}{column}}{4}
+\TestDim{start col 3}{\sankeyNodeInfo{d}{start}}{150pt}{0.01pt}
+\end{tikzpicture}
+% layout=left versus justify
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b -> c : 10, a -> d : 5}
+\end{sankey}
+\TestEq{left: d stays}{\sankeyNodeInfo{d}{column}}{1}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[layout=justify]
+  \sankeyFlows{a -> b -> c : 10, a -> d : 5}
+\end{sankey}
+\TestEq{justify: d to last}{\sankeyNodeInfo{d}{column}}{2}
+\TestEq{justify: c}{\sankeyNodeInfo{c}{column}}{2}
+\TestEq{justify: a}{\sankeyNodeInfo{a}{column}}{0}
+\end{tikzpicture}
+% justify keeps explicit columns
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[layout=justify]
+  \sankeyNode[column=1]{d}
+  \sankeyFlows{a -> b -> c : 10, a -> d : 5}
+\end{sankey}
+\TestEq{justify explicit}{\sankeyNodeInfo{d}{column}}{1}
+\end{tikzpicture}
+% columns at
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[columns at={0pt, 30pt, 100pt}]
+  \sankeyFlows{a -> b -> c : 10}
+\end{sankey}
+\TestDim{at 0}{\sankeyNodeInfo{a}{start}}{0pt}{0.01pt}
+\TestDim{at 1}{\sankeyNodeInfo{b}{start}}{30pt}{0.01pt}
+\TestDim{at 2}{\sankeyNodeInfo{c}{start}}{100pt}{0.01pt}
+\end{tikzpicture}
+% node width and column sep
+\begin{tikzpicture}\sankeySetup{base, node width=7pt}
+\begin{sankey}[column sep=20pt]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestDim{sep}{\sankeyNodeInfo{b}{start}}{20pt}{0.01pt}
+\TestDim{width}{\sankeyNodeInfo{b}{end}}{27pt}{0.01pt}
+\end{tikzpicture}
+% a cycle is reported
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 4, b -> c : 4, c -> a : 4}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[column=3]{a}
+  \sankeyFlows{c -> a : 4, a -> b : 4, b -> c : 4}
+\end{sankey}
+% explicit columns can make a flow run backwards
+\TestEq{explicit a}{\sankeyNodeInfo{a}{column}}{3}
+\end{tikzpicture}
+\END
+\end{document}

@@ -1,0 +1,3118 @@
+% Florian Sihler, 2026
+% Licensed under MIT License
+% https://opensource.org/licenses/MIT
+\NeedsTeXFormat{LaTeX2e}[2022/06/01]
+\ProvidesPackage{tikz-sankey}[2026/10/05 version v1.0 Florian Sihler - Sankey and alluvial diagrams with TikZ]
+\RequirePackage{tikz}
+\usetikzlibrary{fadings}
+\tikzfading[name=sankey fade in,left color=transparent!100,right color=transparent!0]
+\tikzfading[name=sankey fade out,left color=transparent!0,right color=transparent!100]
+\tikzfading[name=sankey fade both,left color=transparent!100,middle color=transparent!0,right color=transparent!100]
+
+% TikZ helpers. They only draw: every number they get is computed by the
+% layout below, and every point is a complete TikZ coordinate.
+% a ribbon: #1 the command that paints it (\fill[...] or \shade[...]), #2 to #5 the
+% upper edge (start, two controls, end), #6 to #9 the lower edge back to the start
+\long\def\sankey@ribbon#1#2#3#4#5#6#7#8#9{%
+   #1 #2 .. controls #3 and #4 .. #5 -- #6 .. controls #7 and #8 .. #9 -- cycle;
+   % an outline follows the two long edges only, never the ends, where bands meet nodes or each other
+   % outlines are kept and drawn once all bands are filled, so that no band covers half of
+   % the outline of its neighbour
+   \ifx\sankey@outline\@empty\else
+      \expandafter\sankey@keepedges\expandafter{\sankey@outline}{#2}{#3}{#4}{#5}{#6}{#7}{#8}{#9}%
+   \fi}
+\long\def\sankey@keepedges#1#2#3#4#5#6#7#8#9{%
+   \g@addto@macro\sankey@alledges{\sankey@edges{#1}{#2}{#3}{#4}{#5}{#6}{#7}{#8}{#9}}}
+\def\sankey@alledges{}
+\def\sankey@drawedges{\sankey@alledges\gdef\sankey@alledges{}}
+\long\def\sankey@edges#1#2#3#4#5#6#7#8#9{%
+   \draw[#1] #2 .. controls #3 and #4 .. #5;
+   \draw[#1] #6 .. controls #7 and #8 .. #9;}
+\def\sankey@outline{}
+% a node: #1 its center, #2 and #3 its width and height, #4 the style, #5 its name
+\long\def\sankey@node#1#2#3#4#5{%
+   \node[shape=rectangle,inner sep=0pt,outer sep=0pt,#4,minimum width=#2,minimum height=#3,
+      anchor=center,name={#5}] at #1 {};}
+\long\def\sankey@leader#1#2{\draw[/sankey/every leader] #1 -- #2;}
+\long\def\sankey@leaderstyled#1#2#3{\draw[#1] #2 -- #3;}
+\long\def\sankey@text#1#2#3{\node[#2] at #1 {#3};}
+% Labels are placed in two steps, so that they can avoid each other: the node is built
+% (with its anchor at the origin) but kept in a box; once its size is known, the layout
+% decides where it goes and \sankey@placelate puts it there.
+\newbox\sankey@latebox
+\def\sankey@savelate{%
+   \global\setbox\sankey@latebox=\box\pgfpositionnodelaterbox
+   \global\let\sankey@late@name\pgfpositionnodelatername
+   \global\let\sankey@late@minx\pgfpositionnodelaterminx
+   \global\let\sankey@late@miny\pgfpositionnodelaterminy
+   \global\let\sankey@late@maxx\pgfpositionnodelatermaxx
+   \global\let\sankey@late@maxy\pgfpositionnodelatermaxy}
+\long\def\sankey@buildlate#1#2{%
+   {\pgfpositionnodelater\sankey@savelate\node[#1] at (0pt,0pt) {#2};}%
+   {\pgfpointtransformed{\pgfpointorigin}\xdef\sankey@late@ox{\the\pgf@x}\xdef\sankey@late@oy{\the\pgf@y}}}
+\def\sankey@placelate#1{%
+   {\setbox\pgfpositionnodelaterbox=\box\sankey@latebox
+    \let\pgfpositionnodelatername\sankey@late@name
+    \let\pgfpositionnodelaterminx\sankey@late@minx
+    \let\pgfpositionnodelaterminy\sankey@late@miny
+    \let\pgfpositionnodelatermaxx\sankey@late@maxx
+    \let\pgfpositionnodelatermaxy\sankey@late@maxy
+    \tikz@scan@one@point\pgfpositionnodenow#1\relax}}
+% a square in the color of a legend entry
+\newcommand\sankey@swatch[1]{\raisebox{\dimexpr.5ex-.8mm\relax}{\tikz\path[/sankey/every swatch,fill={#1}] (0,0) rectangle (1.6mm,1.6mm);}}
+% a band of a route: a polygon (#2, a path without `-- cycle'), or a ring sector from #2
+% (#3 to #5: start angle, delta angle and radius) back along #6 (#7 to #9)
+\long\def\sankey@poly#1#2{\fill[#1] #2 -- cycle;}
+\long\def\sankey@path#1#2{\path[#1] #2 -- cycle;}
+\long\def\sankey@arcband#1#2#3#4#5#6#7#8#9{%
+   \fill[#1] #2 arc[start angle=#3,delta angle=#4,radius=#5] -- #6 arc[start angle=#7,delta angle=#8,radius=#9] -- cycle;}
+% the canvas position of a TikZ coordinate, into \sankey@px and \sankey@py
+\def\sankey@getpoint#1{\tikz@scan@one@point\sankey@gotpoint#1\relax}
+\def\sankey@gotpoint#1{\pgf@process{#1}\xdef\sankey@px{\the\pgf@x}\xdef\sankey@py{\the\pgf@y}}
+
+\ExplSyntaxOn
+
+% Messages
+\msg_new:nnn { tikz-sankey } { outside }
+   { \token_to_str:N #1 ~ can ~ only ~ be ~ used ~ inside ~ a ~ sankey ~ environment. }
+\msg_new:nnn { tikz-sankey } { narrow }
+   { The ~ labels ~ need ~ #1 ~ more ~ than ~ the ~ width ~ of ~ the ~ diagram. }
+\msg_new:nnn { tikz-sankey } { nested } { sankey ~ environments ~ cannot ~ be ~ nested. }
+\msg_new:nnn { tikz-sankey } { unknown-node }
+   { The ~ flow ~ `#1' ~ -> ~ `#2' ~ names ~ the ~ undeclared ~ node ~ `#3'. ~ Declare ~ it ~ with ~
+     \token_to_str:N \sankeyNode \ or ~ set ~ `auto ~ nodes'. ~ The ~ flow ~ is ~ dropped. }
+\msg_new:nnn { tikz-sankey } { negative }
+   { The ~ flow ~ `#1' ~ -> ~ `#2' ~ has ~ the ~ negative ~ value ~ #3. ~ It ~ is ~ dropped. }
+\msg_new:nnn { tikz-sankey } { backwards }
+   { The ~ flow ~ `#1' ~ -> ~ `#2' ~ runs ~ from ~ column ~ #3 ~ to ~ column ~ #4, ~ but ~ flows ~ must ~
+     run ~ to ~ a ~ later ~ column. ~ The ~ flow ~ is ~ dropped. }
+\msg_new:nnn { tikz-sankey } { cycle }
+   { Dropped ~ to ~ break ~ a ~ cycle: ~ #1. ~ Give ~ the ~ nodes ~ columns ~ to ~ keep ~ these ~ flows. }
+\msg_new:nnn { tikz-sankey } { empty } { The ~ diagram ~ has ~ no ~ node ~ with ~ a ~ positive ~ value. ~ Nothing ~ is ~ drawn. }
+\msg_new:nnn { tikz-sankey } { too-small }
+   { The ~ height ~ (#1) ~ leaves ~ no ~ room ~ for ~ the ~ nodes ~ after ~ the ~ gaps. ~ Increase ~ `height' ~ or ~ set ~ `unit'. }
+\msg_new:nnn { tikz-sankey } { value-too-small }
+   { Node ~ `#1' ~ has ~ the ~ value ~ #2, ~ but ~ its ~ flows ~ carry ~ #3. ~ It ~ grows ~ to ~ #3. }
+\msg_new:nnn { tikz-sankey } { choice } { The ~ key ~ `#1' ~ does ~ not ~ accept ~ `#2' ~ (choose ~ one ~ of ~ #3). }
+\msg_new:nnn { tikz-sankey } { bad-flow }
+   { Cannot ~ read ~ `#1' ~ as ~ a ~ flow; ~ write ~ `from ~ -> ~ to ~ : ~ value' ~ (more ~ nodes ~ chain ~ with ~ `->'). }
+\msg_new:nnn { tikz-sankey } { unknown-info }
+   { \token_to_str:N \sankeyNodeInfo \ knows ~ no ~ `#1' ~ (see ~ the ~ manual ~ for ~ the ~ keys ~ it ~ knows). }
+
+% Storage. Every attribute of a node, flow, group or route is a control sequence
+% named after the diagram, the attribute and the owner; the layout adds the computed ones.
+\seq_new:N \g__sankey_nodes_seq
+\tl_new:N \g__sankey_routes_tl
+\int_new:N \g__sankey_route_int
+\seq_new:N \g__sankey_flows_seq
+\seq_new:N \g__sankey_groups_seq
+\seq_new:N \g__sankey_titles_seq
+\seq_new:N \l__sankey_valid_seq
+\seq_new:N \l__sankey_drawn_seq
+\seq_new:N \l__sankey_tmp_seq
+\seq_new:N \l__sankey_path_seq
+\int_new:N \g__sankey_flow_int
+\int_new:N \l__sankey_maxcol_int
+\int_new:N \l__sankey_pass_int
+\bool_new:N \g__sankey_active_bool
+\bool_new:N \l__sankey_changed_bool
+\bool_new:N \l__sankey_ok_bool
+\tl_new:N \l__sankey_name_tl
+\tl_new:N \l__sankey_flow_tl
+\tl_new:N \l__sankey_group_tl
+\tl_new:N \l__sankey_cur_tl
+\tl_new:N \l__sankey_a_tl
+\tl_new:N \l__sankey_b_tl
+\tl_new:N \l__sankey_text_tl
+\tl_new:N \l__sankey_paint_tl
+\tl_new:N \l__sankey_item_tl
+\tl_new:N \l__sankey_opts_tl
+\tl_new:N \l__sankey_valuepart_tl
+\fp_new:N \l__sankey_val_fp
+\fp_new:N \l__sankey_unit_fp
+\fp_new:N \l__sankey_cursor_fp
+\fp_new:N \l__sankey_bottom_fp
+\fp_new:N \l__sankey_maxext_fp
+\fp_new:N \l__sankey_prev_fp
+\fp_new:N \l__sankey_s_fp
+\fp_new:N \l__sankey_mid_fp
+
+% Each value is a control sequence of its own (a hash lookup, where a property list would be
+% searched); the number of the diagram is part of its name, so a new diagram starts empty.
+\int_new:N \g__sankey_id_int
+\cs_new:Npn \__sankey_get:nn #1#2 { \cs:w g__sankey_ \int_use:N \g__sankey_id_int _#1_ #2 \cs_end: }
+\cs_generate_variant:Nn \__sankey_get:nn { ne , nV }
+\cs_new_protected:Npn \__sankey_set:nnn #1#2#3
+   { \cs_gset_nopar:cpe { g__sankey_ \int_use:N \g__sankey_id_int _#1_ #2 } { \exp_not:n { \exp_not:n {#3} } } }
+\cs_generate_variant:Nn \__sankey_set:nnn { nne , nnV , nVn , nVe , nee , nen , nVV }
+\prg_new_conditional:Npnn \__sankey_has:nn #1#2 { p , T , F , TF }
+   { \cs_if_exist:cTF { g__sankey_ \int_use:N \g__sankey_id_int _#1_ #2 } { \prg_return_true: } { \prg_return_false: } }
+\prg_generate_conditional_variant:Nnn \__sankey_has:nn { nV , ne } { p , T , F , TF }
+% an attribute of a node, or #3 if it has none
+\cs_new:Npn \__sankey_get_or:nnn #1#2#3 { \__sankey_has:nnTF {#1} {#2} { \__sankey_get:nn {#1} {#2} } {#3} }
+\cs_generate_variant:Nn \__sankey_get_or:nnn { nen , nVV , nVn }
+
+\cs_new_protected:Npn \__sankey_clear:
+   {
+      \int_gincr:N \g__sankey_id_int
+      \seq_gclear:N \g__sankey_nodes_seq
+      \seq_gclear:N \g__sankey_bcols_seq
+      \seq_gclear:N \g__sankey_flows_seq
+      \seq_gclear:N \g__sankey_groups_seq
+      \seq_gclear:N \g__sankey_titles_seq
+      \int_gzero:N \g__sankey_flow_int
+      \tl_gclear:N \g__sankey_routes_tl
+      \int_gzero:N \g__sankey_route_int
+   }
+
+% Options
+\tl_new:N \l__sankey_unit_tl
+\fp_new:N \l__sankey_height_fp
+\fp_new:N \l__sankey_colsep_fp
+\fp_new:N \l__sankey_width_fp
+\fp_new:N \l__sankey_sep_fp
+\fp_new:N \l__sankey_pitch_fp
+\fp_new:N \l__sankey_curv_fp
+\fp_new:N \l__sankey_tint_fp
+\fp_new:N \l__sankey_opacity_fp
+\fp_new:N \l__sankey_ldist_fp
+\fp_new:N \l__sankey_lsep_fp
+\fp_new:N \l__sankey_leader_fp
+\fp_new:N \l__sankey_tdist_fp
+\clist_new:N \l__sankey_colsat_clist
+\clist_new:N \l__sankey_palette_clist
+\clist_new:N \l__sankey_gpalette_clist
+\clist_new:N \l__sankey_titles_clist
+\tl_new:N \l__sankey_align_tl
+\tl_new:N \l__sankey_fade_tl
+\tl_new:N \l__sankey_layout_tl
+\tl_new:N \l__sankey_forder_tl
+\tl_new:N \l__sankey_norder_tl
+\tl_new:N \l__sankey_port_tl
+\tl_new:N \l__sankey_flowcolor_tl
+\tl_new:N \l__sankey_nodecolor_tl
+\tl_new:N \l__sankey_labelpos_tl
+\tl_new:N \l__sankey_vlabelpos_tl
+\tl_new:N \l__sankey_label_tl
+\tl_new:N \l__sankey_vlabel_tl
+\tl_new:N \l__sankey_prefix_tl
+\tl_new:N \l__sankey_legend_tl
+\tl_new:N \l__sankey_groupnode_tl
+\tl_new:N \l__sankey_legendfor_tl
+\int_new:N \l__sankey_dir_int
+\int_new:N \l__sankey_prec_int
+\int_new:N \l__sankey_pprec_int
+\bool_new:N \l__sankey_showempty_bool
+\bool_new:N \l__sankey_autosep_bool
+\fp_new:N \l__sankey_nround_fp
+\fp_new:N \l__sankey_seam_fp
+\fp_new:N \l__sankey_oround_fp
+\tl_new:N \l__sankey_outline_tl
+\bool_new:N \l__sankey_autowidth_bool
+\bool_new:N \l__sankey_backdrop_bool
+\fp_new:N \l__sankey_minwidth_fp
+\tl_new:N \l__sankey_totalwidth_tl
+\fp_new:N \l__sankey_mincolsep_fp
+\fp_new:N \l__sankey_flowroom_fp
+\bool_new:N \l__sankey_autonodes_bool
+
+\cs_new_protected:Npn \__sankey_choice:Nnnn #1#2#3#4
+   {
+      \clist_if_in:nnTF {#4} {#3} { \tl_set:Nn #1 {#3} }
+         { \msg_error:nnnnn { tikz-sankey } { choice } {#2} {#3} {#4} }
+   }
+\cs_new_protected:Npn \__sankey_bool:Nn #1#2
+   { \str_if_eq:nnTF {#2} { false } { \bool_set_false:N #1 } { \bool_set_true:N #1 } }
+\cs_new:Npn \__sankey_num_format:n #1 {#1}
+\cs_new:Npn \__sankey_pct_format:n #1 { #1 \, \% }
+
+\pgfkeys
+   {
+      /sankey/.is~family,
+      % size and placement
+      /sankey/unit/.code = \tl_set:Nn \l__sankey_unit_tl {#1},
+      /sankey/height/.code = { \fp_set:Nn \l__sankey_height_fp { \dim_to_fp:n {#1} } \tl_clear:N \l__sankey_unit_tl },
+      /sankey/column~sep/.code =
+         {
+            \str_if_eq:nnTF {#1} { auto } { \bool_set_true:N \l__sankey_autosep_bool }
+               { \bool_set_false:N \l__sankey_autosep_bool \fp_set:Nn \l__sankey_colsep_fp { \dim_to_fp:n {#1} } }
+         },
+      /sankey/min~column~sep/.code = \fp_set:Nn \l__sankey_mincolsep_fp { \dim_to_fp:n {#1} },
+      /sankey/flow~room/.code = \fp_set:Nn \l__sankey_flowroom_fp { \dim_to_fp:n {#1} },
+      /sankey/gap/.style = { node~sep = {#1} },
+      /sankey/columns~at/.code = \clist_set:Nn \l__sankey_colsat_clist {#1},
+      /sankey/node~width/.code =
+         {
+            \str_if_eq:nnTF {#1} { auto } { \bool_set_true:N \l__sankey_autowidth_bool }
+               { \bool_set_false:N \l__sankey_autowidth_bool \fp_set:Nn \l__sankey_width_fp { \dim_to_fp:n {#1} } }
+         },
+      /sankey/min~node~width/.code = \fp_set:Nn \l__sankey_minwidth_fp { \dim_to_fp:n {#1} },
+      /sankey/width/.code = \tl_set:Nn \l__sankey_totalwidth_tl {#1},
+      /sankey/label~backdrop/.code = \__sankey_bool:Nn \l__sankey_backdrop_bool {#1},
+      /sankey/label~room/.code = \__sankey_bool:Nn \l__sankey_labelroom_bool {#1},
+      /sankey/label~room/.default = true,
+      /sankey/label~backdrop/.default = true,
+      /sankey/node~rounding/.code = \fp_set:Nn \l__sankey_nround_fp { \dim_to_fp:n {#1} },
+      /sankey/outer~rounding/.code = \fp_set:Nn \l__sankey_oround_fp { \dim_to_fp:n {#1} },
+      /sankey/flow~outline/.code = \tl_set:Nn \l__sankey_outline_tl {#1},
+      /sankey/seam/.code = \fp_set:Nn \l__sankey_seam_fp { \dim_to_fp:n {#1} },
+      /sankey/node~sep/.code = \fp_set:Nn \l__sankey_sep_fp { \dim_to_fp:n {#1} },
+      /sankey/min~pitch/.code = \fp_set:Nn \l__sankey_pitch_fp { \dim_to_fp:n {#1} },
+      /sankey/direction/.code =
+         {
+            \str_case:nnF {#1}
+               { { right } { \int_set:Nn \l__sankey_dir_int { 0 } } { down } { \int_set:Nn \l__sankey_dir_int { 1 } }
+                 { left } { \int_set:Nn \l__sankey_dir_int { 2 } } { up } { \int_set:Nn \l__sankey_dir_int { 3 } } }
+               { \msg_error:nnnnn { tikz-sankey } { choice } { direction } {#1} { right,~down,~left,~up } }
+         },
+      /sankey/align/.code = \__sankey_choice:Nnnn \l__sankey_align_tl { align } {#1} { top, center, bottom },
+      /sankey/long~flows/.code = \__sankey_choice:Nnnn \l__sankey_longflows_tl { long~flows } {#1} { route, direct },
+      /sankey/relax/.code = \int_set:Nn \l__sankey_relax_int {#1},
+      /sankey/layout/.code = \__sankey_choice:Nnnn \l__sankey_layout_tl { layout } {#1} { left, right, center, justify },
+      /sankey/node~order/.code = \__sankey_choice:Nnnn \l__sankey_norder_tl { node~order } {#1} { declaration, decreasing, increasing },
+      /sankey/flow~order/.code = \__sankey_choice:Nnnn \l__sankey_forder_tl { flow~order } {#1} { sorted, group, declaration },
+      /sankey/port~align/.code = \__sankey_choice:Nnnn \l__sankey_port_tl { port~align } {#1} { top, center },
+      /sankey/show~empty/.code = \__sankey_bool:Nn \l__sankey_showempty_bool {#1},
+      /sankey/show~empty/.default = true,
+      /sankey/auto~nodes/.code = \__sankey_bool:Nn \l__sankey_autonodes_bool {#1},
+      /sankey/auto~nodes/.default = true,
+      % colors
+      /sankey/palette/.code = \clist_set:Nn \l__sankey_palette_clist {#1},
+      /sankey/group~palette/.code = \clist_set:Nn \l__sankey_gpalette_clist {#1},
+      /sankey/node~color/.code = \tl_set:Nn \l__sankey_nodecolor_tl {#1},
+      /sankey/column~shades/.code = \fp_set:Nn \l__sankey_shades_fp {#1},
+      /sankey/flow~color/.code = \tl_set:Nn \l__sankey_flowcolor_tl {#1},
+      /sankey/flow~tint/.code = \fp_set:Nn \l__sankey_tint_fp {#1},
+      /sankey/flow~opacity/.code = \fp_set:Nn \l__sankey_opacity_fp {#1},
+      /sankey/curvature/.code = \fp_set:Nn \l__sankey_curv_fp {#1},
+      /sankey/flow~fade/.code = \__sankey_choice:Nnnn \l__sankey_fade_tl { flow~fade } {#1} { none, in, out, both },
+      /sankey/group~colors/.code = { \keyval_parse:nnn { \__sankey_group:nn { } } { \__sankey_group_color:nn } {#1} },
+      /sankey/node~colors/.code = { \keyval_parse:nnn { \use_none:n } { \__sankey_node_color:nn } {#1} },
+      % labels
+      /sankey/label/.code = \tl_set:Nn \l__sankey_label_tl {#1},
+      /sankey/value~label/.code = \tl_set:Nn \l__sankey_vlabel_tl {#1},
+      /sankey/label~position/.code = \__sankey_choice:Nnnn \l__sankey_labelpos_tl { label~position } {#1}
+         { auto, before, after, inside, none, left, right, above, below },
+      /sankey/value~label~position/.code = \__sankey_choice:Nnnn \l__sankey_vlabelpos_tl { value~label~position } {#1}
+         { auto, before, after, inside, none, left, right, above, below },
+      /sankey/label~distance/.code = \fp_set:Nn \l__sankey_ldist_fp { \dim_to_fp:n {#1} },
+      /sankey/label~sep/.code = \fp_set:Nn \l__sankey_lsep_fp { \dim_to_fp:n {#1} },
+      /sankey/leader~threshold/.code = \fp_set:Nn \l__sankey_leader_fp { \str_if_eq:nnTF {#1} { none } { inf } { \dim_to_fp:n {#1} } },
+      /sankey/column~titles/.code = \clist_set:Nn \l__sankey_titles_clist {#1},
+      /sankey/column~title~distance/.code = \fp_set:Nn \l__sankey_tdist_fp { \dim_to_fp:n {#1} },
+      /sankey/precision/.code = \int_set:Nn \l__sankey_prec_int {#1},
+      /sankey/percent~precision/.code = \int_set:Nn \l__sankey_pprec_int {#1},
+      /sankey/number~format/.code = \cs_set:Npn \__sankey_num_format:n ##1 {#1},
+      /sankey/percent~format/.code = \cs_set:Npn \__sankey_pct_format:n ##1 {#1},
+      /sankey/name~prefix/.code = \tl_set:Nn \l__sankey_prefix_tl {#1},
+      /sankey/legend/.code = \__sankey_choice:Nnnn \l__sankey_legend_tl { legend } {#1} { auto, none, right, below, above, left },
+      /sankey/group~node~color/.code = \tl_set:Nn \l__sankey_groupnode_tl {#1},
+      /sankey/legend/.default = right,
+      /sankey/legend~for/.code = \__sankey_choice:Nnnn \l__sankey_legendfor_tl { legend~for } {#1} { groups, nodes },
+   }
+% The defaults and the presets are data: the keys are set from them, and the manual prints them.
+\tl_const:Nn \c__sankey_defaults_tl
+   {
+      height = 50mm, width = {}, column~sep = auto, min~column~sep = 20mm, flow~room = 14mm,
+      node~width = 1.8mm, min~node~width = 1.8mm, node~rounding = 0pt, outer~rounding = .35mm, flow~outline = none, seam = .2pt, long~flows = route, relax = 8, node~sep = 2mm, min~pitch = 0pt,
+      direction = right, align = top, layout = left, node~order = declaration, flow~order = sorted,
+      flow~fade = none, port~align = top, show~empty = false, auto~nodes = true,
+      palette = { sankey-1, sankey-2, sankey-3, sankey-4, sankey-5, sankey-6, sankey-7, sankey-8 },
+      group~palette = {}, node~color = auto, column~shades = 55, flow~color = auto, flow~tint = 45, flow~opacity = 1, curvature = .5,
+      label = \sankeyName, value~label = {}, label~position = auto, value~label~position = auto,
+      label~distance = 1mm, label~sep = 1pt, label~backdrop = true, label~room = true, leader~threshold = none, column~titles = {},
+      column~title~distance = 2mm, precision = 2, percent~precision = 1, name~prefix = sankey-,
+      legend = auto, legend~for = groups, buckets = false, bucket~count = 10, bucket~value = {}, bucket~fill = 70, loop~size = 3mm, group~node~color = auto, route~radius = 3mm,
+      every~picture/.style = {},
+      every~node/.style = {},
+      every~first~node/.style = {},
+      every~last~node/.style = {},
+      every~flow/.style = {},
+      every~label/.style = { font = \small },
+      every~value~label/.style = { font = \footnotesize , text = black!72 },
+      every~inside~label/.style = {},
+      every~backdrop/.style = { fill = white , fill~opacity = .45 , text~opacity = 1 , rounded~corners = 1pt },
+      every~leader/.style = { draw = black!45 , line~width = .3pt },
+      every~column~title/.style = { font = \small\bfseries },
+      every~legend/.style = {},
+      every~swatch/.style = {},
+      every~bar/.style = {},
+      every~route~label/.style = {},
+      every~column/.style = { draw = black!80 , line~width = .5pt , rounded~corners = 1pt },
+      every~bucket~line/.style = { draw = black!45 , line~width = .3pt },
+      every~bucket~mark/.style = {},
+      every~column~label/.style = { font = \small }
+   }
+\prop_const_from_keyval:Nn \c__sankey_presets_prop
+   {
+      classic =
+         {
+            align = center, flow~color = source, flow~tint = 100, flow~opacity = .45,
+            node~sep = 3mm, node~width = 1.5mm
+         },
+      alluvial =
+         {
+            node~color = black!12, flow~color = auto, flow~tint = 100, flow~opacity = .6,
+            node~width = auto, node~sep = 1.2mm, curvature = .45,
+            label~position = inside, value~label = {}, label~backdrop = false,
+            every~node/.style = { draw = black!70, line~width = .4pt },
+            every~inside~label/.style = { font = \scriptsize },
+            legend = right
+         },
+      energy =
+         {
+            align = center, flow~color = target, flow~tint = 100, flow~opacity = .8, node~width = .8mm,
+            node~sep = 4mm, curvature = .6, every~node/.style = { fill = black!75 }
+         },
+      mermaid =
+         {
+            layout = justify, flow~color = gradient, flow~tint = 60, flow~opacity = .8, node~width = 2mm,
+            label~position = after, show~values = true, every~label/.append~style = { align = left }
+         },
+      bucket~bars = { buckets, flow~outline = auto, node~width = 5mm, flow~opacity = .8, flow~tint = 100, curvature = .3, port~align = center },
+      black~and~white =
+         {
+            node~color = black, flow~color = black, flow~tint = 22, node~width = .8mm, outer~rounding = 0pt,
+            label~backdrop = false, every~label/.style = { font = \rmfamily\small },
+            label = { \sankeyName \enspace \textcolor { black!45 } { \sankeyValue } }
+         },
+      values = { value~label = \sankeyValue },
+      percentages = { value~label = \sankeyShare }
+   }
+\prop_map_inline:Nn \c__sankey_presets_prop { \pgfkeys { /sankey/#1/.style = {#2} } }
+
+% per node
+\pgfkeys
+   {
+      /sankey/node/.is~family,
+      /sankey/node/column/.code = \__sankey_set:nVe { col } \l__sankey_name_tl { \int_eval:n {#1} },
+      /sankey/node/value/.code = \__sankey_set:nVe { value } \l__sankey_name_tl { \fp_eval:n {#1} },
+      /sankey/node/color/.code = \__sankey_set:nVe { color } \l__sankey_name_tl {#1},
+      /sankey/node/text/.code = \__sankey_set:nVn { text } \l__sankey_name_tl {#1},
+      /sankey/node/label/.code = \__sankey_set:nVn { label } \l__sankey_name_tl {#1},
+      /sankey/node/value~label/.code = \__sankey_set:nVn { vlabel } \l__sankey_name_tl {#1},
+      /sankey/node/label~position/.code = \__sankey_set:nVn { labelpos } \l__sankey_name_tl {#1},
+      /sankey/node/value~label~position/.code = \__sankey_set:nVn { vlabelpos } \l__sankey_name_tl {#1},
+      /sankey/node/label~style/.code = \__sankey_append:nVn { labelstyle } \l__sankey_name_tl {#1},
+      /sankey/node/value~label~style/.code = \__sankey_append:nVn { vlabelstyle } \l__sankey_name_tl {#1},
+      /sankey/node/style/.code = \__sankey_append:nVn { style } \l__sankey_name_tl {#1},
+      /sankey/node/skip/.code = \__sankey_set:nVe { skip } \l__sankey_name_tl { \dim_to_fp:n {#1} },
+      /sankey/node/shift/.code = \__sankey_set:nVe { shift } \l__sankey_name_tl { \dim_to_fp:n {#1} },
+      /sankey/node/at/.code = \__sankey_set:nVe { u } \l__sankey_name_tl { \dim_to_fp:n {#1} },
+   }
+% per flow
+\pgfkeys
+   {
+      /sankey/flow/.is~family,
+      /sankey/flow/group/.code = { \__sankey_group:nn { } {#1} \__sankey_set:nVe { fgroup } \l__sankey_flow_tl { \tl_to_str:n {#1} } },
+      /sankey/flow/color/.code = \__sankey_set:nVe { fcolor } \l__sankey_flow_tl {#1},
+      /sankey/flow/from~color/.code = \__sankey_set:nVe { ffromc } \l__sankey_flow_tl {#1},
+      /sankey/flow/to~color/.code = \__sankey_set:nVe { ftoc } \l__sankey_flow_tl {#1},
+      /sankey/flow/tint/.code = \__sankey_set:nVe { ftint } \l__sankey_flow_tl { \fp_eval:n {#1} },
+      /sankey/flow/opacity/.code = \__sankey_set:nVe { fopac } \l__sankey_flow_tl { \fp_eval:n {#1} },
+      /sankey/flow/curvature/.code = \__sankey_set:nVe { fcurv } \l__sankey_flow_tl { \fp_eval:n {#1} },
+      /sankey/flow/fade/.code = \__sankey_set:nVn { ffade } \l__sankey_flow_tl {#1},
+      /sankey/flow/style/.code = \__sankey_append:nVn { fstyle } \l__sankey_flow_tl {#1},
+   }
+% per group
+\pgfkeys
+   {
+      /sankey/group/.is~family,
+      /sankey/group/color/.code = \__sankey_set:nVe { gcolor } \l__sankey_group_tl {#1},
+      /sankey/group/label/.code = \__sankey_set:nVn { glabel } \l__sankey_group_tl {#1},
+   }
+\cs_new_protected:Npn \__sankey_append:nnn #1#2#3
+   { \__sankey_set:nne {#1} {#2} { \__sankey_get_or:nnn {#1} {#2} { } \exp_not:n { , #3 } } }
+\cs_generate_variant:Nn \__sankey_append:nnn { nV }
+
+% the colors of the default palette (Okabe and Ito: told apart with every color vision)
+\definecolor { sankey-1 } { HTML } { 0072B2 }
+\definecolor { sankey-2 } { HTML } { E69F00 }
+\definecolor { sankey-3 } { HTML } { 009E73 }
+\definecolor { sankey-4 } { HTML } { CC79A7 }
+\definecolor { sankey-5 } { HTML } { 56B4E9 }
+\definecolor { sankey-6 } { HTML } { D55E00 }
+\definecolor { sankey-7 } { HTML } { 999999 }
+\definecolor { sankey-8 } { HTML } { F0E442 }
+
+% Declarations: nodes, flows, groups
+\cs_new_protected:Npn \__sankey_if_active:NT #1#2
+   { \bool_if:NTF \g__sankey_active_bool {#2} { \msg_error:nnn { tikz-sankey } { outside } {#1} } }
+
+\cs_new_protected:Npn \__sankey_node:nn #1#2
+   {
+      \tl_set:Ne \l__sankey_name_tl { \tl_trim_spaces:e { \tl_to_str:e {#1} } }
+      \seq_if_in:NVF \g__sankey_nodes_seq \l__sankey_name_tl
+         {
+            \seq_gput_right:NV \g__sankey_nodes_seq \l__sankey_name_tl
+            \__sankey_set:nVe { idx } \l__sankey_name_tl { \seq_count:N \g__sankey_nodes_seq }
+            % `name@column' reuses a name: the label shows what stands before the @
+            \seq_set_split:NeV \l__sankey_tmp_seq { \tl_to_str:n { @ } } \l__sankey_name_tl
+            \__sankey_set:nVe { dtext } \l__sankey_name_tl { \seq_item:Nn \l__sankey_tmp_seq { 1 } }
+         }
+      \pgfqkeys { /sankey/node } {#2}
+   }
+\cs_new_protected:Npn \__sankey_node_color:nn #1#2 { \__sankey_node:nn {#1} { color = {#2} } }
+\cs_new_protected:Npn \__sankey_group:nn #1#2
+   {
+      \tl_set:Ne \l__sankey_group_tl { \tl_trim_spaces:e { \tl_to_str:e {#2} } }
+      \seq_if_in:NVF \g__sankey_groups_seq \l__sankey_group_tl
+         {
+            \seq_gput_right:NV \g__sankey_groups_seq \l__sankey_group_tl
+            \__sankey_set:nVe { gidx } \l__sankey_group_tl { \seq_count:N \g__sankey_groups_seq }
+         }
+      \pgfqkeys { /sankey/group } {#1}
+   }
+\cs_new_protected:Npn \__sankey_group_color:nn #1#2 { \__sankey_group:nn { color = {#2} } {#1} }
+
+% a node a flow names: it exists, or it is declared now (with `auto nodes')
+\cs_new_protected:Npn \__sankey_ensure:nnn #1#2#3
+   {
+      \seq_if_in:NnF \g__sankey_nodes_seq {#3}
+         {
+            \bool_if:NTF \l__sankey_autonodes_bool
+               { \__sankey_node:nn {#3} { } }
+               { \bool_set_false:N \l__sankey_ok_bool \msg_error:nnnnn { tikz-sankey } { unknown-node } {#1} {#2} {#3} }
+         }
+   }
+\cs_generate_variant:Nn \__sankey_ensure:nnn { VVV }
+\cs_generate_variant:Nn \seq_set_split:Nnn { NnV }
+\cs_new_protected:Npn \__sankey_flow:nnnn #1#2#3#4
+   {
+      \tl_set:Ne \l__sankey_a_tl { \tl_trim_spaces:e { \tl_to_str:e {#1} } }
+      \tl_set:Ne \l__sankey_b_tl { \tl_trim_spaces:e { \tl_to_str:e {#2} } }
+      \fp_set:Nn \l__sankey_val_fp {#3}
+      \fp_compare:nNnTF \l__sankey_val_fp < { 0 }
+         { \msg_warning:nneee { tikz-sankey } { negative } { \l__sankey_a_tl } { \l__sankey_b_tl } { \fp_use:N \l__sankey_val_fp } }
+         {
+            \bool_set_true:N \l__sankey_ok_bool
+            \__sankey_ensure:VVV \l__sankey_a_tl \l__sankey_b_tl \l__sankey_a_tl
+            \__sankey_ensure:VVV \l__sankey_a_tl \l__sankey_b_tl \l__sankey_b_tl
+            \bool_if:NT \l__sankey_ok_bool
+               {
+                  \int_gincr:N \g__sankey_flow_int
+                  \tl_set:Ne \l__sankey_flow_tl { \int_use:N \g__sankey_flow_int }
+                  \seq_gput_right:NV \g__sankey_flows_seq \l__sankey_flow_tl
+                  \__sankey_set:nVV { ffrom } \l__sankey_flow_tl \l__sankey_a_tl
+                  \__sankey_set:nVV { fto } \l__sankey_flow_tl \l__sankey_b_tl
+                  \__sankey_set:nVe { fval } \l__sankey_flow_tl { \fp_use:N \l__sankey_val_fp }
+                  \pgfqkeys { /sankey/flow } {#4}
+               }
+         }
+   }
+% a path of nodes: one flow between each two of them, all with the same keys
+\cs_new_protected:Npn \__sankey_path:nnn #1#2#3
+   {
+      \seq_set_from_clist:Nn \l__sankey_path_seq {#1}
+      \__sankey_path_flows:nn {#2} {#3}
+   }
+\cs_new_protected:Npn \__sankey_path_flows:nn #1#2
+   {
+      \int_compare:nNnTF { \seq_count:N \l__sankey_path_seq } < { 2 }
+         { \msg_error:nne { tikz-sankey } { bad-flow } { \seq_use:Nn \l__sankey_path_seq { ~->~ } } }
+         {
+            \int_step_inline:nn { \seq_count:N \l__sankey_path_seq - 1 }
+               {
+                  \__sankey_flow:eenn
+                     { \seq_item:Nn \l__sankey_path_seq {##1} } { \seq_item:Nn \l__sankey_path_seq { ##1 + 1 } } {#1} {#2}
+               }
+         }
+   }
+\cs_generate_variant:Nn \__sankey_flow:nnnn { een }
+\cs_generate_variant:Nn \__sankey_flow:nnnn { eenn }
+\cs_generate_variant:Nn \__sankey_path_flows:nn { Ve }
+
+% `from -> to : value [keys]', where more `->' make a path
+\seq_new:N \l__sankey_items_seq
+\cs_new_protected:Npn \__sankey_parse_flows:nn #1#2
+   {
+      % commas inside [...] belong to the keys, not to the list of flows
+      \seq_set_split:Nnn \l__sankey_items_seq { , } {#2}
+      \tl_clear:N \l__sankey_item_tl
+      \seq_map_inline:Nn \l__sankey_items_seq
+         {
+            \tl_put_right:Nn \l__sankey_item_tl {##1}
+            \regex_count:nVN { \[ } \l__sankey_item_tl \l__sankey_open_int
+            \regex_count:nVN { \] } \l__sankey_item_tl \l__sankey_close_int
+            \int_compare:nNnTF \l__sankey_open_int > \l__sankey_close_int
+               { \tl_put_right:Nn \l__sankey_item_tl { , } }
+               {
+                  \tl_if_blank:VF \l__sankey_item_tl { \__sankey_parse_flow:Vn \l__sankey_item_tl {#1} }
+                  \tl_clear:N \l__sankey_item_tl
+               }
+         }
+      \tl_if_blank:VF \l__sankey_item_tl { \__sankey_parse_flow:Vn \l__sankey_item_tl {#1} }
+   }
+\cs_generate_variant:Nn \regex_count:nnN { nVN }
+\int_new:N \l__sankey_open_int
+\int_new:N \l__sankey_close_int
+\cs_new_protected:Npn \__sankey_parse_flow:nn #1#2
+   {
+      \tl_set:Nn \l__sankey_item_tl {#1}
+      \tl_clear:N \l__sankey_opts_tl
+      % the path ends at the first colon outside of braces; keys in brackets may follow the value
+      % (a colon written in expl3 code is a letter: it counts as well)
+      \tl_replace_all:NnV \l__sankey_item_tl { : } \c_colon_str
+      \seq_set_split:NVV \l__sankey_tmp_seq \c_colon_str \l__sankey_item_tl
+      \int_compare:nNnTF { \seq_count:N \l__sankey_tmp_seq } > { 1 }
+         {
+            \seq_pop_left:NN \l__sankey_tmp_seq \l__sankey_a_tl
+            \tl_set:Ne \l__sankey_valuepart_tl { \exp_args:NNo \seq_use:Nn \l__sankey_tmp_seq { \c_colon_str } }
+            \seq_set_split:NnV \l__sankey_path_seq { -> } \l__sankey_a_tl
+            \regex_match:nVT { \A [^\[]* : } \l__sankey_valuepart_tl { \seq_clear:N \l__sankey_path_seq }
+            \regex_extract_once:nVNT { \A (.*?) \[ (.*) \] \s* \Z } \l__sankey_valuepart_tl \l__sankey_tmp_seq
+               {
+                  \tl_set:Ne \l__sankey_valuepart_tl { \seq_item:Nn \l__sankey_tmp_seq { 2 } }
+                  \tl_set:Ne \l__sankey_opts_tl { \seq_item:Nn \l__sankey_tmp_seq { 3 } }
+               }
+            % `name[3]' puts a node into a column, `name[keys]' gives it keys
+            \seq_clear:N \l__sankey_newpath_seq
+            \seq_map_function:NN \l__sankey_path_seq \__sankey_path_node:n
+            \seq_set_eq:NN \l__sankey_path_seq \l__sankey_newpath_seq
+            \int_compare:nNnTF { \seq_count:N \l__sankey_path_seq } < { 2 }
+               { \msg_error:nnn { tikz-sankey } { bad-flow } {#1} }
+               {
+                  \__sankey_path_flows:Ve \l__sankey_valuepart_tl { \exp_not:n {#2} , \exp_not:V \l__sankey_opts_tl }
+               }
+         }
+         { \msg_error:nnn { tikz-sankey } { bad-flow } {#1} }
+   }
+\seq_new:N \l__sankey_newpath_seq
+\cs_new_protected:Npn \__sankey_path_node:n #1
+   {
+      \tl_set:Nn \l__sankey_a_tl {#1}
+      \regex_extract_once:nVNTF { \A \s* (.*?) \s* \[ (.*) \] \s* \Z } \l__sankey_a_tl \l__sankey_fields_seq
+         {
+            \tl_set:Ne \l__sankey_b_tl { \seq_item:Nn \l__sankey_fields_seq { 3 } }
+            % a number first is the column: `butter[0]', `butter[0, color=red]'
+            \regex_replace_once:nnN { \A \s* (\d+) \s* (,|\Z) } { column = \1 \2 } \l__sankey_b_tl
+            \exp_args:NeV \__sankey_node:nn { \seq_item:Nn \l__sankey_fields_seq { 2 } } \l__sankey_b_tl
+            \seq_put_right:Ne \l__sankey_newpath_seq { \seq_item:Nn \l__sankey_fields_seq { 2 } }
+         }
+         { \seq_put_right:Nn \l__sankey_newpath_seq {#1} }
+   }
+\cs_generate_variant:Nn \regex_extract_once:nnNTF { nV }
+\cs_generate_variant:Nn \__sankey_parse_flow:nn { Vn }
+\cs_generate_variant:Nn \regex_extract_once:nnNT { nV }
+\cs_generate_variant:Nn \seq_set_split:Nnn { NVV , Nne , NnV }
+\cs_generate_variant:Nn \tl_replace_all:Nnn { NnV }
+
+% Layout
+\cs_new_protected:Npn \__sankey_columns:
+   {
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \__sankey_has:nnTF { col } {##1}
+               { \__sankey_set:nne { c } {##1} { \__sankey_get:nn { col } {##1} } \__sankey_set:nnn { auto } {##1} { 0 } }
+               { \__sankey_set:nnn { c } {##1} { 0 } \__sankey_set:nnn { auto } {##1} { 1 } }
+            \__sankey_set:nnn { hasout } {##1} { 0 }
+         }
+      \seq_map_inline:Nn \g__sankey_flows_seq { \__sankey_set:nen { hasout } { \__sankey_get:nn { ffrom } {##1} } { 1 } }
+      % a node without a column goes one column right of the farthest node that flows into it;
+      % flows that still move a node after as many rounds as there are nodes lie on a cycle:
+      % they are dropped, and the columns are found again without them
+      \__sankey_relax_all:
+      \bool_if:NT \l__sankey_changed_bool
+         {
+            % a depth-first search from the nodes in their order finds the flows that close a cycle
+            \seq_clear:N \l__sankey_tmp_seq
+            \seq_map_inline:Nn \g__sankey_nodes_seq { \__sankey_set:nnn { dfs } {##1} { 0 } \seq_clear_new:c { l__sankey_out_##1_seq } }
+            \seq_map_inline:Nn \g__sankey_flows_seq
+               { \seq_put_right:cn { l__sankey_out_ \__sankey_get:nn { ffrom } {##1} _seq } {##1} }
+            \seq_map_inline:Nn \g__sankey_nodes_seq
+               { \int_compare:nNnT { \__sankey_get:nn { dfs } {##1} } = { 0 } { \__sankey_dfs:n {##1} } }
+            \msg_error:nne { tikz-sankey } { cycle } { \seq_use:Nn \l__sankey_tmp_seq { ,~ } }
+            \seq_map_inline:Nn \g__sankey_nodes_seq
+               { \int_compare:nNnT { \__sankey_get:nn { auto } {##1} } = { 1 } { \__sankey_set:nnn { c } {##1} { 0 } } }
+            \__sankey_relax_all:
+         }
+      \int_zero:N \l__sankey_maxcol_int
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         { \int_set:Nn \l__sankey_maxcol_int { \int_max:nn { \l__sankey_maxcol_int } { \__sankey_get:nn { c } {##1} } } }
+      \str_case:Vn \l__sankey_layout_tl
+         {
+            { right } { \__sankey_layout_right: }
+            { center } { \__sankey_layout_center: }
+         }
+      % `justify': a node nothing leaves goes to the last column
+      \str_if_eq:VnT \l__sankey_layout_tl { justify }
+         {
+            \seq_map_inline:Nn \g__sankey_nodes_seq
+               {
+                  \bool_lazy_all:nT
+                     {
+                        { \int_compare_p:nNn { \__sankey_get:nn { auto } {##1} } = { 1 } }
+                        { \int_compare_p:nNn { \__sankey_get:nn { hasout } {##1} } = { 0 } }
+                        { \int_compare_p:nNn { \__sankey_get:nn { c } {##1} } > { 0 } }
+                     }
+                     { \__sankey_set:nne { c } {##1} { \int_use:N \l__sankey_maxcol_int } }
+               }
+         }
+   }
+% `right': a node without a column goes as far right as the flows that leave it allow
+\cs_new_protected:Npn \__sankey_layout_right:
+   {
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \__sankey_set:nne { depth } {##1}
+               { \int_compare:nNnTF { \__sankey_get:nn { auto } {##1} } = { 1 } { 0 } { \int_eval:n { \l__sankey_maxcol_int - \__sankey_get:nn { c } {##1} } } }
+         }
+      \int_zero:N \l__sankey_pass_int
+      \bool_set_true:N \l__sankey_changed_bool
+      \bool_while_do:nn
+         { \l__sankey_changed_bool && \int_compare_p:nNn \l__sankey_pass_int < { \seq_count:N \g__sankey_nodes_seq + 1 } }
+         {
+            \bool_set_false:N \l__sankey_changed_bool
+            \int_incr:N \l__sankey_pass_int
+            \seq_map_inline:Nn \g__sankey_flows_seq
+               {
+                  \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn { ffrom } {##1} }
+                  \tl_set:Ne \l__sankey_b_tl { \__sankey_get:nn { fto } {##1} }
+                  \bool_lazy_and:nnT
+                     { \int_compare_p:nNn { \__sankey_get:nV { auto } \l__sankey_a_tl } = { 1 } }
+                     { \int_compare_p:nNn { \__sankey_get:nV { depth } \l__sankey_a_tl } < { \__sankey_get:nV { depth } \l__sankey_b_tl + 1 } }
+                     {
+                        \__sankey_set:nVe { depth } \l__sankey_a_tl { \int_eval:n { \__sankey_get:nV { depth } \l__sankey_b_tl + 1 } }
+                        \bool_set_true:N \l__sankey_changed_bool
+                     }
+               }
+         }
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \int_compare:nNnT { \__sankey_get:nn { auto } {##1} } = { 1 }
+               { \__sankey_set:nne { c } {##1} { \int_max:nn { 0 } { \l__sankey_maxcol_int - \__sankey_get:nn { depth } {##1} } } }
+         }
+   }
+% `center': a node nothing flows into goes just before the first node it flows to
+\cs_new_protected:Npn \__sankey_layout_center:
+   {
+      \seq_map_inline:Nn \g__sankey_nodes_seq { \__sankey_set:nnn { mint } {##1} { 1000000 } }
+      \seq_map_inline:Nn \g__sankey_flows_seq
+         {
+            \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn { ffrom } {##1} }
+            \__sankey_set:nVe { mint } \l__sankey_a_tl
+               { \int_min:nn { \__sankey_get:nV { mint } \l__sankey_a_tl } { \__sankey_get:ne { c } { \__sankey_get:nn { fto } {##1} } } }
+         }
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \bool_lazy_all:nT
+               {
+                  { \int_compare_p:nNn { \__sankey_get:nn { auto } {##1} } = { 1 } }
+                  { \int_compare_p:nNn { \__sankey_get:nn { c } {##1} } = { 0 } }
+                  { \int_compare_p:nNn { \__sankey_get:nn { mint } {##1} } < { 1000000 } }
+               }
+               { \__sankey_set:nne { c } {##1} { \int_max:nn { 0 } { \__sankey_get:nn { mint } {##1} - 1 } } }
+         }
+   }
+\cs_new_protected:Npn \__sankey_dfs:n #1
+   {
+      \__sankey_set:nnn { dfs } {#1} { 1 }
+      \seq_map_inline:cn { l__sankey_out_#1_seq }
+         {
+            \int_case:nn { \__sankey_get:ne { dfs } { \__sankey_get:nn { fto } {##1} } }
+               {
+                  { 1 }
+                     {
+                        \__sankey_set:nnn { fdrop } {##1} { 1 }
+                        \seq_put_right:Ne \l__sankey_tmp_seq { \__sankey_get:nn { ffrom } {##1} ~->~ \__sankey_get:nn { fto } {##1} }
+                     }
+                  { 0 } { \__sankey_dfs:e { \__sankey_get:nn { fto } {##1} } }
+               }
+         }
+      \__sankey_set:nnn { dfs } {#1} { 2 }
+   }
+\cs_generate_variant:Nn \__sankey_dfs:n { e }
+\cs_new_protected:Npn \__sankey_relax_all:
+   {
+      \int_zero:N \l__sankey_pass_int
+      \bool_set_true:N \l__sankey_changed_bool
+      \bool_while_do:nn
+         { \l__sankey_changed_bool && \int_compare_p:nNn \l__sankey_pass_int < { \seq_count:N \g__sankey_nodes_seq + 1 } }
+         {
+            \bool_set_false:N \l__sankey_changed_bool
+            \int_incr:N \l__sankey_pass_int
+            \seq_map_function:NN \g__sankey_flows_seq \__sankey_relax:n
+         }
+   }
+\cs_new_protected:Npn \__sankey_relax:n #1
+   { \__sankey_has:nnF { fdrop } {#1} { \__sankey_relax_flow:n {#1} } }
+\cs_new_protected:Npn \__sankey_relax_flow:n #1
+   {
+      \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn { ffrom } {#1} }
+      \tl_set:Ne \l__sankey_b_tl { \__sankey_get:nn { fto } {#1} }
+      \bool_lazy_and:nnT
+         { \int_compare_p:nNn { \__sankey_get:nV { auto } \l__sankey_b_tl } = { 1 } }
+         { \int_compare_p:nNn { \__sankey_get:nV { c } \l__sankey_b_tl } < { \__sankey_get:nV { c } \l__sankey_a_tl + 1 } }
+         {
+            \__sankey_set:nVe { c } \l__sankey_b_tl { \int_eval:n { \__sankey_get:nV { c } \l__sankey_a_tl + 1 } }
+            \bool_set_true:N \l__sankey_changed_bool
+         }
+   }
+
+% the flows that run forward, what enters and leaves each node, and its value
+\cs_new_protected:Npn \__sankey_values:
+   {
+      \seq_clear:N \l__sankey_valid_seq
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         { \__sankey_set:nnn { in } {##1} { 0 } \__sankey_set:nnn { out } {##1} { 0 } }
+      \seq_map_inline:Nn \g__sankey_flows_seq
+         {
+            \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn { ffrom } {##1} }
+            \tl_set:Ne \l__sankey_b_tl { \__sankey_get:nn { fto } {##1} }
+            % a flow dropped for a cycle has had its error
+            \__sankey_has:nnF { fdrop } {##1}
+               {
+                  \int_compare:nNnTF { \__sankey_get:nV { c } \l__sankey_b_tl } > { \__sankey_get:nV { c } \l__sankey_a_tl }
+                     {
+                        \seq_put_right:Nn \l__sankey_valid_seq {##1}
+                        \__sankey_set:nVe { out } \l__sankey_a_tl
+                           { \fp_eval:n { \__sankey_get:nV { out } \l__sankey_a_tl + \__sankey_get:nn { fval } {##1} } }
+                        \__sankey_set:nVe { in } \l__sankey_b_tl
+                           { \fp_eval:n { \__sankey_get:nV { in } \l__sankey_b_tl + \__sankey_get:nn { fval } {##1} } }
+                     }
+                     {
+                        \msg_error:nneeee { tikz-sankey } { backwards } { \l__sankey_a_tl } { \l__sankey_b_tl }
+                           { \__sankey_get:nV { c } \l__sankey_a_tl } { \__sankey_get:nV { c } \l__sankey_b_tl }
+                     }
+               }
+            \__sankey_set:nne { fgi } {##1}
+               { \__sankey_has:neTF { fgroup } {##1} { \__sankey_get:ne { gidx } { \__sankey_get:nn { fgroup } {##1} } } { 0 } }
+         }
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \__sankey_set:nne { v } {##1}
+               { \fp_eval:n { max ( \__sankey_get:nn { in } {##1} , \__sankey_get:nn { out } {##1} ) } }
+            \__sankey_has:nnT { value } {##1}
+               {
+                  \fp_compare:nNnT { \__sankey_get:nn { value } {##1} } < { \__sankey_get:nn { v } {##1} }
+                     {
+                        \msg_warning:nneee { tikz-sankey } { value-too-small } {##1}
+                           { \__sankey_get:nn { value } {##1} } { \__sankey_get:nn { v } {##1} }
+                     }
+                  \__sankey_set:nne { v } {##1}
+                     { \fp_eval:n { max ( \__sankey_get:nn { value } {##1} , \__sankey_get:nn { v } {##1} ) } }
+               }
+            \__sankey_set:nne { vis } {##1}
+               {
+                  \bool_lazy_or:nnTF { \l__sankey_showempty_bool }
+                     { \fp_compare_p:nNn { \__sankey_get:nn { v } {##1} } > { 0 } } { 1 } { 0 }
+               }
+         }
+   }
+
+% the color of a node, of a group
+\cs_new:Npn \__sankey_palette:Nn #1#2
+   { \clist_item:Nn #1 { \int_mod:nn { #2 - 1 } { \clist_count:N #1 } + 1 } }
+% nodes of the same text share a color: the palette goes by the texts in the order they first appear
+\prop_new:N \l__sankey_texts_prop
+\cs_new:Npn \__sankey_text_index:n #1 { \prop_item:Ne \l__sankey_texts_prop { \__sankey_text_key:n {#1} } }
+\cs_new:Npn \__sankey_text_key:n #1
+   { \tl_to_str:e { \__sankey_get_or:nnn { text } {#1} { \__sankey_get_or:nnn { dtext } {#1} {#1} } } }
+\cs_generate_variant:Nn \prop_item:Nn { Ne }
+\cs_generate_variant:Nn \prop_put:Nnn { NVe }
+\prg_generate_conditional_variant:Nnn \prop_if_in:Nn { NV } { F }
+\cs_new_protected:Npn \__sankey_colors:
+   {
+      \prop_clear:N \l__sankey_texts_prop
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \tl_set:Ne \l__sankey_item_tl { \__sankey_text_key:n {##1} }
+            \prop_if_in:NVF \l__sankey_texts_prop \l__sankey_item_tl
+               { \prop_put:NVe \l__sankey_texts_prop \l__sankey_item_tl { \int_eval:n { \prop_count:N \l__sankey_texts_prop + 1 } } }
+         }
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \__sankey_set:nne { rc } {##1}
+               {
+                  \__sankey_has:nnTF { color } {##1} { \__sankey_get:nn { color } {##1} }
+                     {
+                        \str_case:VnF \l__sankey_nodecolor_tl
+                           {
+                              { auto }
+                                 {
+                                    \bool_lazy_or:nnTF { \seq_if_empty_p:N \g__sankey_groups_seq } { \str_if_eq_p:Vn \l__sankey_groupnode_tl { auto } }
+                                       { \__sankey_palette:Nn \l__sankey_palette_clist { \__sankey_text_index:n {##1} } }
+                                       { \exp_not:V \l__sankey_groupnode_tl }
+                                 }
+                              { column } { }
+                           }
+                           { \exp_not:V \l__sankey_nodecolor_tl }
+                     }
+               }
+         }
+      \clist_if_empty:NT \l__sankey_gpalette_clist { \clist_set_eq:NN \l__sankey_gpalette_clist \l__sankey_palette_clist }
+      \seq_map_inline:Nn \g__sankey_groups_seq
+         {
+            \__sankey_set:nne { grc } {##1}
+               {
+                  \__sankey_has:nnTF { gcolor } {##1} { \__sankey_get:nn { gcolor } {##1} }
+                     { \__sankey_palette:Nn \l__sankey_gpalette_clist { \__sankey_get:nn { gidx } {##1} } }
+               }
+         }
+   }
+
+% `node color = column': one color of the palette for each column, its nodes in shades of it,
+% from the full color down to `column shades' percent of it; a node with a color keeps it
+\fp_new:N \l__sankey_shades_fp
+\cs_new_protected:Npn \__sankey_column_colors:
+   {
+      \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int }
+         {
+            \tl_set:Ne \l__sankey_item_tl { \__sankey_palette:Nn \l__sankey_palette_clist { ##1 + 1 } }
+            \colorlet { sankey@column@##1 } { \l__sankey_item_tl }
+            \int_zero:N \l__sankey_pass_int
+            \seq_map_inline:cn { g__sankey_col_##1_seq }
+               {
+                  \__sankey_has:nnF { color } {####1}
+                     {
+                        \__sankey_set:nne { rc } {####1}
+                           {
+                              sankey@column@##1 !
+                              \fp_eval:n
+                                 {
+                                    round ( 100 - ( 100 - \l__sankey_shades_fp ) * \l__sankey_pass_int
+                                       / max ( \seq_count:c { g__sankey_col_##1_seq } - 1 , 1 ) )
+                                 }
+                           }
+                     }
+                  \int_incr:N \l__sankey_pass_int
+               }
+         }
+   }
+% the visible nodes of every column, top to bottom
+\cs_new_protected:Npn \__sankey_build_columns:
+   {
+      \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int } { \seq_gclear_new:c { g__sankey_col_##1_seq } }
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \int_compare:nNnT { \__sankey_get:nn { vis } {##1} } = { 1 }
+               { \seq_gput_right:cn { g__sankey_col_ \__sankey_get:nn { c } {##1} _seq } {##1} }
+         }
+      \str_if_eq:VnF \l__sankey_norder_tl { declaration }
+         { \int_step_function:nnN { 0 } { \l__sankey_maxcol_int } \__sankey_sort_column:n }
+      \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int }
+         {
+            \fp_zero:N \l__sankey_val_fp
+            \seq_map_inline:cn { g__sankey_col_##1_seq } { \fp_add:Nn \l__sankey_val_fp { \__sankey_get:nn { v } {####1} } }
+            \__sankey_set:nne { colsum } {##1} { \fp_use:N \l__sankey_val_fp }
+         }
+   }
+\cs_new_protected:Npn \__sankey_sort_column:n #1
+   {
+      \seq_gsort:cn { g__sankey_col_#1_seq }
+         {
+            \fp_compare:nNnTF
+               { \__sankey_get:nn { v } {##1} * \str_if_eq:VnTF \l__sankey_norder_tl { decreasing } { -1 } { 1 } }
+               > { \__sankey_get:nn { v } {##2} * \str_if_eq:VnTF \l__sankey_norder_tl { decreasing } { -1 } { 1 } }
+               { \sort_return_swapped: } { \sort_return_same: }
+         }
+   }
+
+% the length of one unit of value: given, or the largest that fits every column into `height'
+\cs_new_protected:Npn \__sankey_unit:
+   {
+      \tl_if_blank:VTF \l__sankey_unit_tl
+         {
+            \fp_set:Nn \l__sankey_unit_fp { inf }
+            \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int }
+               {
+                  \fp_zero:N \l__sankey_val_fp
+                  \fp_zero:N \l__sankey_cursor_fp
+                  \seq_map_inline:cn { g__sankey_col_##1_seq }
+                     {
+                        \fp_add:Nn \l__sankey_val_fp { \__sankey_get:nn { v } {####1} }
+                        \fp_add:Nn \l__sankey_cursor_fp { \__sankey_get_or:nnn { skip } {####1} { 0 } }
+                     }
+                  \fp_add:Nn \l__sankey_cursor_fp
+                     { max ( \seq_count:c { g__sankey_col_##1_seq } - 1 , 0 ) * \l__sankey_sep_fp }
+                  \fp_compare:nNnT \l__sankey_val_fp > { 0 }
+                     {
+                        \fp_set:Nn \l__sankey_unit_fp
+                           { min ( \l__sankey_unit_fp , ( \l__sankey_height_fp - \l__sankey_cursor_fp ) / \l__sankey_val_fp ) }
+                     }
+               }
+            % nodes whose labels (or `min pitch') need more room than node and gap take that room:
+            % a few rounds find the unit with which every column fits
+            % (the flows keep at least 70 percent of their width; beyond that the diagram grows taller)
+            \fp_compare:nNnF \l__sankey_unit_fp = { inf }
+               {
+                  \fp_set_eq:NN \l__sankey_mid_fp \l__sankey_unit_fp
+                  \prg_replicate:nn { 4 } { \__sankey_unit_round: }
+                  \fp_set:Nn \l__sankey_unit_fp { max ( \l__sankey_unit_fp , .7 * \l__sankey_mid_fp ) }
+               }
+            \fp_compare:nNnT \l__sankey_unit_fp < { 0 }
+               {
+                  \msg_error:nne { tikz-sankey } { too-small } { \fp_to_dim:N \l__sankey_height_fp }
+                  \fp_set:Nn \l__sankey_unit_fp { 0 }
+               }
+         }
+         { \fp_set:Nn \l__sankey_unit_fp { \dim_to_fp:n { \l__sankey_unit_tl } } }
+   }
+
+% `column sep = auto': every gap between two columns is as wide as the labels on its two
+% sides and `flow room' together need, so that no label reaches into a flow or a node
+\fp_new:N \l__sankey_before_fp
+\fp_new:N \l__sankey_after_fp
+\cs_new_protected:Npn \__sankey_auto_sep:
+   {
+      \clist_clear:N \l__sankey_colsat_clist
+      \fp_zero:N \l__sankey_cursor_fp
+      \clist_put_right:Ne \l__sankey_colsat_clist { 0pt }
+      \__sankey_column_labels:n { 0 }
+      \int_step_inline:nn { \l__sankey_maxcol_int }
+         {
+            \fp_set_eq:NN \l__sankey_s_fp \l__sankey_after_fp
+            \__sankey_column_labels:n {##1}
+            \fp_add:Nn \l__sankey_cursor_fp
+               {
+                  max ( \l__sankey_mincolsep_fp , \l__sankey_width_fp + 2 * \l__sankey_ldist_fp
+                     + \l__sankey_s_fp + \l__sankey_before_fp + \l__sankey_flowroom_fp )
+               }
+            \clist_put_right:Ne \l__sankey_colsat_clist { \fp_to_dim:N \l__sankey_cursor_fp }
+         }
+   }
+% how far a label of node #1 (#2: label or vlabel) reaches along the flows, into \g__sankey_prev_fp
+\cs_new_protected:Npn \__sankey_measure:nnn #1#2#3 % node, label | vlabel, side
+   {
+      \fp_gzero:N \g__sankey_prev_fp
+      \fp_gzero:N \g__sankey_across_fp
+      \__sankey_label_text:nn {#1} {#2}
+      \tl_if_blank:VF \l__sankey_text_tl
+         {
+            \group_begin:
+            \tl_set:Nn \l__sankey_cur_tl {#1}
+            \tl_set:Ne \l__sankey_opts_tl
+               {
+                  \str_if_eq:nnTF {#3} { inside } { /sankey/every~inside~label , }
+                     { \bool_if:NT \l__sankey_backdrop_bool { /sankey/every~backdrop , } }
+                  \str_if_eq:nnTF {#2} { label } { /sankey/every~label } { /sankey/every~value~label }
+                  \exp_not:e { \__sankey_get_or:nnn { #2style } {#1} { } }
+               }
+            \exp_args:NVV \sankey@buildlate \l__sankey_opts_tl \l__sankey_text_tl
+            \fp_gset:Nn \g__sankey_prev_fp
+               {
+                  \int_if_odd:nTF { \l__sankey_dir_int }
+                     { \dim_to_fp:n { \sankey@late@maxy - \sankey@late@miny } }
+                     { \dim_to_fp:n { \sankey@late@maxx - \sankey@late@minx } }
+               }
+            \fp_gset:Nn \g__sankey_across_fp
+               {
+                  \int_if_odd:nTF { \l__sankey_dir_int }
+                     { \dim_to_fp:n { \sankey@late@maxx - \sankey@late@minx } }
+                     { \dim_to_fp:n { \sankey@late@maxy - \sankey@late@miny } }
+               }
+            \group_end:
+         }
+   }
+\fp_new:N \g__sankey_across_fp
+% the room a node needs in its column for its labels beside it, so that they need not move away
+\bool_new:N \l__sankey_labelroom_bool
+\cs_new_protected:Npn \__sankey_label_room:
+   {
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \fp_zero:N \l__sankey_val_fp
+            \bool_lazy_all:nT { { \l__sankey_labelroom_bool } { \int_compare_p:nNn { \__sankey_get:nn { vis } {##1} } = { 1 } } { ! \__sankey_has_p:nn { dummy } {##1} } }
+               {
+                  \clist_map_inline:nn { label, vlabel }
+                     {
+                        \tl_set:Ne \l__sankey_item_tl { \__sankey_side:nn {##1} {####1} }
+                        \bool_lazy_or:nnT { \str_if_eq_p:Vn \l__sankey_item_tl { before } } { \str_if_eq_p:Vn \l__sankey_item_tl { after } }
+                           {
+                              \exp_args:NnnV \__sankey_measure:nnn {##1} {####1} \l__sankey_item_tl
+                              \fp_set:Nn \l__sankey_val_fp { max ( \l__sankey_val_fp , \g__sankey_across_fp + \l__sankey_lsep_fp ) }
+                           }
+                     }
+               }
+            \__sankey_set:nne { lp } {##1} { \fp_use:N \l__sankey_val_fp }
+         }
+   }
+% the distance from the top of node #1 to the top of the node #2 below it: the gap, `min pitch',
+% and as much as the labels of both need, which sit at the middles of their nodes
+\tl_new:N \l__sankey_prev_tl
+\cs_new:Npn \__sankey_dist:nn #1#2
+   {
+      max ( \__sankey_get:nn { h } {#1} + \l__sankey_sep_fp , \l__sankey_pitch_fp ,
+         \__sankey_get:nn { h } {#1} / 2
+         + ( \__sankey_get_or:nnn { lp } {#1} { 0 } + \__sankey_get_or:nnn { lp } {#2} { 0 } ) / 2
+         - \__sankey_get:nn { h } {#2} / 2 )
+   }
+\cs_generate_variant:Nn \__sankey_dist:nn { V , nV }
+% how far a node reaches below its top, its labels included; where the first node of a column starts
+\cs_new:Npn \__sankey_reach:n #1
+   { max ( \__sankey_get:nn { h } {#1} , \__sankey_get:nn { h } {#1} / 2 + \__sankey_get_or:nnn { lp } {#1} { 0 } / 2 ) }
+\cs_new:Npn \__sankey_first_top:n #1
+   { max ( 0 , \__sankey_get_or:nnn { lp } {#1} { 0 } / 2 - \__sankey_get:nn { h } {#1} / 2 ) }
+% the place a node takes in its column
+\cs_new:Npn \__sankey_pitch:n #1
+   { max ( \__sankey_get:nn { h } {#1} + \l__sankey_sep_fp , \l__sankey_pitch_fp , \__sankey_get_or:nnn { lp } {#1} { 0 } ) }
+% the widest label before and after the nodes of column #1 (along the flows)
+\cs_new_protected:Npn \__sankey_column_labels:n #1
+   {
+      \fp_zero:N \l__sankey_before_fp
+      \fp_zero:N \l__sankey_after_fp
+      \seq_map_inline:cn { g__sankey_col_#1_seq }
+         {
+            \__sankey_has:nnF { dummy } {##1} {
+            \clist_map_inline:nn { label, vlabel }
+               {
+                  \tl_set:Ne \l__sankey_item_tl { \__sankey_side:nn {##1} {####1} }
+                  \bool_lazy_or:nnT { \str_if_eq_p:Vn \l__sankey_item_tl { before } } { \str_if_eq_p:Vn \l__sankey_item_tl { after } }
+                     {
+                        \exp_args:NnnV \__sankey_measure:nnn {##1} {####1} \l__sankey_item_tl
+                        \fp_set:cn { l__sankey_ \l__sankey_item_tl _fp }
+                           { max ( \fp_use:c { l__sankey_ \l__sankey_item_tl _fp } , \g__sankey_prev_fp ) }
+                     }
+               }
+            }
+         }
+   }
+% `node width = auto': nodes as wide as their labels inside need (and `min node width' at least);
+% a fixed width grows as well where a label inside would not fit
+\cs_new_protected:Npn \__sankey_auto_width:
+   {
+      \bool_if:NT \l__sankey_autowidth_bool { \fp_set_eq:NN \l__sankey_width_fp \l__sankey_minwidth_fp }
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \int_compare:nNnT { \__sankey_get:nn { vis } {##1} } = { 1 }
+               {
+                  \clist_map_inline:nn { label, vlabel }
+                     {
+                        \str_if_eq:eeT { \__sankey_side:nn {##1} {####1} } { inside }
+                           {
+                              \__sankey_measure:nnn {##1} {####1} { inside }
+                              \fp_set:Nn \l__sankey_width_fp
+                                 { max ( \l__sankey_width_fp , \g__sankey_prev_fp + 2 * \l__sankey_ldist_fp ) }
+                           }
+                     }
+               }
+         }
+   }
+% `width': the columns spread so that the diagram, its outer labels included, is this wide. A gap
+% is at least as wide as the labels in it need (and up to half of `flow room' for the flows); the gaps
+% that need less share the rest evenly
+\int_new:N \l__sankey_fixed_int
+\bool_new:N \l__sankey_legendauto_bool
+\cs_new_protected:Npn \__sankey_fit_width:
+   {
+      \int_compare:nNnT { \l__sankey_maxcol_int } > { 0 }
+         {
+            \__sankey_column_labels:n { 0 }
+            \fp_set_eq:NN \l__sankey_s_fp \l__sankey_before_fp
+            % the room of each gap, from the labels after column i-1 and before column i
+            \int_step_inline:nn { \l__sankey_maxcol_int }
+               {
+                  \fp_set_eq:NN \l__sankey_val_fp \l__sankey_after_fp
+                  \__sankey_column_labels:n {##1}
+                  \cs_set:cpe { __sankey_need_##1: }
+                     {
+                        \fp_eval:n
+                           {
+                              \int_compare:nNnTF {##1} = { 1 } { 0 } { \l__sankey_val_fp }
+                              + \l__sankey_before_fp + \l__sankey_width_fp + 2 * \l__sankey_ldist_fp
+                           }
+                     }
+                  \cs_set:cpn { __sankey_fixed_##1: } { 0 }
+               }
+            % only the labels before column 1 sit in the first gap: those after column 0 were not counted
+            \__sankey_column_labels:n { 0 }
+            \cs_set:cpe { __sankey_need_1: } { \fp_eval:n { \use:c { __sankey_need_1: } + \l__sankey_after_fp } }
+            \__sankey_column_labels:n { \int_use:N \l__sankey_maxcol_int }
+            \__sankey_legend_width:
+            \fp_set:Nn \l__sankey_cursor_fp
+               {
+                  \dim_to_fp:n { \l__sankey_totalwidth_tl } - \l__sankey_width_fp - \g__sankey_prev_fp
+                  - \l__sankey_s_fp - ( \l__sankey_s_fp > 0 ) * \l__sankey_ldist_fp
+                  - \l__sankey_after_fp - ( \l__sankey_after_fp > 0 ) * \l__sankey_ldist_fp
+               }
+            % room for the flows in each gap: half of `flow room', less if the width is too small
+            \fp_set_eq:NN \l__sankey_val_fp \l__sankey_cursor_fp
+            \int_step_inline:nn { \l__sankey_maxcol_int } { \fp_sub:Nn \l__sankey_val_fp { \use:c { __sankey_need_##1: } } }
+            % a legend that `legend = auto' put at the right goes below if the labels need its room
+            \bool_lazy_and:nnT { \l__sankey_legendauto_bool } { \fp_compare_p:nNn \l__sankey_val_fp < { 0 } }
+               {
+                  \fp_add:Nn \l__sankey_cursor_fp { \g__sankey_prev_fp }
+                  \fp_add:Nn \l__sankey_val_fp { \g__sankey_prev_fp }
+                  \tl_set:Nn \l__sankey_legend_tl { below }
+               }
+            \fp_compare:nNnT \l__sankey_val_fp < { 0 }
+               { \msg_warning:nne { tikz-sankey } { narrow } { \fp_eval:n { round ( - \l__sankey_val_fp , 0 ) } pt } }
+            \fp_set:Nn \l__sankey_val_fp { max ( 0 , min ( \l__sankey_flowroom_fp / 2 , \l__sankey_val_fp / \l__sankey_maxcol_int ) ) }
+            \int_step_inline:nn { \l__sankey_maxcol_int }
+               { \cs_set:cpe { __sankey_need_##1: } { \fp_eval:n { \use:c { __sankey_need_##1: } + \l__sankey_val_fp } } }
+            % fix the gaps that need more than an even share of what the others leave
+            \int_zero:N \l__sankey_fixed_int
+            \bool_set_true:N \l__sankey_changed_bool
+            \bool_while_do:Nn \l__sankey_changed_bool
+               {
+                  \bool_set_false:N \l__sankey_changed_bool
+                  \fp_set_eq:NN \l__sankey_val_fp \l__sankey_cursor_fp
+                  \int_step_inline:nn { \l__sankey_maxcol_int }
+                     { \int_compare:nNnT { \use:c { __sankey_fixed_##1: } } = { 1 } { \fp_sub:Nn \l__sankey_val_fp { \use:c { __sankey_need_##1: } } } }
+                  \int_compare:nNnTF { \l__sankey_fixed_int } < { \l__sankey_maxcol_int }
+                     {
+                        \fp_set:Nn \l__sankey_colsep_fp { \l__sankey_val_fp / ( \l__sankey_maxcol_int - \l__sankey_fixed_int ) }
+                        \int_step_inline:nn { \l__sankey_maxcol_int }
+                           {
+                              \bool_lazy_and:nnT
+                                 { \int_compare_p:nNn { \use:c { __sankey_fixed_##1: } } = { 0 } }
+                                 { \fp_compare_p:nNn { \use:c { __sankey_need_##1: } } > \l__sankey_colsep_fp }
+                                 {
+                                    \cs_set:cpn { __sankey_fixed_##1: } { 1 }
+                                    \int_incr:N \l__sankey_fixed_int
+                                    \bool_set_true:N \l__sankey_changed_bool
+                                 }
+                           }
+                     }
+                     { \fp_zero:N \l__sankey_colsep_fp }
+               }
+            \fp_set:Nn \l__sankey_colsep_fp { max ( \l__sankey_colsep_fp , \l__sankey_width_fp ) }
+            \clist_clear:N \l__sankey_colsat_clist
+            \clist_put_right:Nn \l__sankey_colsat_clist { 0pt }
+            \fp_zero:N \l__sankey_val_fp
+            \int_step_inline:nn { \l__sankey_maxcol_int }
+               {
+                  \fp_add:Nn \l__sankey_val_fp
+                     { \int_compare:nNnTF { \use:c { __sankey_fixed_##1: } } = { 1 } { \use:c { __sankey_need_##1: } } { \l__sankey_colsep_fp } }
+                  \clist_put_right:Ne \l__sankey_colsat_clist { \fp_to_dim:N \l__sankey_val_fp }
+               }
+         }
+   }
+\cs_generate_variant:Nn \__sankey_measure:nnn { nnV }
+\cs_new_protected:Npn \__sankey_unit_round:
+   {
+      \fp_set_eq:NN \l__sankey_s_fp \l__sankey_unit_fp
+      \fp_set:Nn \l__sankey_unit_fp { inf }
+      \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int }
+         {
+            \fp_zero:N \l__sankey_val_fp     % the value of the nodes that take room by their size
+            \fp_zero:N \l__sankey_cursor_fp  % the room all others take, and the gaps
+            \seq_map_inline:cn { g__sankey_col_##1_seq }
+               {
+                  \fp_add:Nn \l__sankey_cursor_fp { \__sankey_get_or:nnn { skip } {####1} { 0 } }
+                  \fp_compare:nNnTF
+                     { max ( \l__sankey_pitch_fp , \__sankey_get_or:nnn { lp } {####1} { 0 } ) }
+                     > { \__sankey_get:nn { v } {####1} * \l__sankey_s_fp + \l__sankey_sep_fp }
+                     { \fp_add:Nn \l__sankey_cursor_fp { max ( \l__sankey_pitch_fp , \__sankey_get_or:nnn { lp } {####1} { 0 } ) } }
+                     {
+                        \fp_add:Nn \l__sankey_val_fp { \__sankey_get:nn { v } {####1} }
+                        \fp_add:Nn \l__sankey_cursor_fp { \l__sankey_sep_fp }
+                     }
+               }
+            \fp_compare:nNnT \l__sankey_val_fp > { 0 }
+               {
+                  \fp_set:Nn \l__sankey_unit_fp
+                     { min ( \l__sankey_unit_fp , ( \l__sankey_height_fp + \l__sankey_sep_fp - \l__sankey_cursor_fp ) / \l__sankey_val_fp ) }
+               }
+         }
+      \fp_compare:nNnT \l__sankey_unit_fp = { inf } { \fp_set_eq:NN \l__sankey_unit_fp \l__sankey_s_fp }
+      \fp_set:Nn \l__sankey_unit_fp { max ( \l__sankey_unit_fp , \l__sankey_s_fp / 4 ) }
+   }
+% where a column starts
+\cs_new:Npn \__sankey_colu:n #1
+   {
+      \int_compare:nNnTF { \clist_count:N \l__sankey_colsat_clist } > {#1}
+         { \dim_to_fp:n { \clist_item:Nn \l__sankey_colsat_clist { #1 + 1 } } }
+         { ( #1 ) * \l__sankey_colsep_fp }
+   }
+
+% s grows away from the top of a column; every column is stacked, then aligned
+\cs_new_protected:Npn \__sankey_stack:
+   {
+      \fp_zero:N \l__sankey_maxext_fp
+      \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int }
+         {
+            \fp_zero:N \l__sankey_bottom_fp
+            \tl_clear:N \l__sankey_prev_tl
+            \seq_map_inline:cn { g__sankey_col_##1_seq }
+               {
+                  \__sankey_set:nne { h } {####1} { \fp_eval:n { \__sankey_get:nn { v } {####1} * \l__sankey_unit_fp } }
+                  \__sankey_set:nne { cu } {####1} { \fp_eval:n { \__sankey_get_or:nnn { u } {####1} { \__sankey_colu:n {##1} } } }
+                  % the top without `shift': after the node before, as far as both need
+                  \fp_set:Nn \l__sankey_cursor_fp
+                     {
+                        \tl_if_empty:NTF \l__sankey_prev_tl { \__sankey_first_top:n {####1} }
+                           { \__sankey_get:nV { base } \l__sankey_prev_tl + \__sankey_dist:Vn \l__sankey_prev_tl {####1} }
+                        + \__sankey_get_or:nnn { skip } {####1} { 0 }
+                     }
+                  \__sankey_set:nne { base } {####1} { \fp_use:N \l__sankey_cursor_fp }
+                  \__sankey_set:nne { st } {####1}
+                     { \fp_eval:n { \l__sankey_cursor_fp + \__sankey_get_or:nnn { shift } {####1} { 0 } } }
+                  \fp_set:Nn \l__sankey_bottom_fp
+                     { max ( \l__sankey_bottom_fp , \__sankey_get:nn { st } {####1} + \__sankey_reach:n {####1} ) }
+                  \tl_set:Nn \l__sankey_prev_tl {####1}
+               }
+            \__sankey_set:nne { colext } {##1} { \fp_use:N \l__sankey_bottom_fp }
+            \fp_set:Nn \l__sankey_maxext_fp { max ( \l__sankey_maxext_fp , \l__sankey_bottom_fp ) }
+         }
+      \str_if_eq:VnF \l__sankey_align_tl { top }
+         {
+            \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int }
+               {
+                  \fp_set:Nn \l__sankey_val_fp
+                     {
+                        ( \l__sankey_maxext_fp - \__sankey_get:nn { colext } {##1} )
+                        * \str_if_eq:VnTF \l__sankey_align_tl { center } { .5 } { 1 }
+                     }
+                  \seq_map_inline:cn { g__sankey_col_##1_seq }
+                     { \__sankey_set:nne { st } {####1} { \fp_eval:n { \__sankey_get:nn { st } {####1} + \l__sankey_val_fp } } }
+               }
+         }
+   }
+
+% where each flow leaves its source and enters its target; flows that end higher up start
+% higher up, so that they do not cross where they need not
+\cs_new_protected:Npn \__sankey_ports:
+   {
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \int_compare:nNnT { \__sankey_get:nn { vis } {##1} } = { 1 }
+               {
+                  \__sankey_set:nne { outcur } {##1} { \__sankey_port:nn {##1} { out } }
+                  \__sankey_set:nne { incur } {##1} { \__sankey_port:nn {##1} { in } }
+               }
+         }
+      % flows of value 0 take no room, and may join nodes that are not drawn
+      \seq_clear:N \l__sankey_drawn_seq
+      \seq_map_inline:Nn \l__sankey_valid_seq
+         { \fp_compare:nNnT { \__sankey_get:nn { fval } {##1} } > { 0 } { \seq_put_right:Nn \l__sankey_drawn_seq {##1} } }
+      \seq_set_eq:NN \l__sankey_tmp_seq \l__sankey_drawn_seq
+      \__sankey_sort_flows:Nn \l__sankey_tmp_seq { fto }
+      \seq_map_inline:Nn \l__sankey_tmp_seq { \__sankey_assign:nnnn {##1} { ffrom } { outcur } { fsa } }
+      \seq_set_eq:NN \l__sankey_tmp_seq \l__sankey_drawn_seq
+      \__sankey_sort_flows:Nn \l__sankey_tmp_seq { ffrom }
+      \seq_map_inline:Nn \l__sankey_tmp_seq { \__sankey_assign:nnnn {##1} { fto } { incur } { fsb } }
+   }
+\cs_new:Npn \__sankey_port:nn #1#2
+   {
+      \fp_eval:n
+         {
+            \__sankey_get:nn { st } {#1} + \str_if_eq:VnTF \l__sankey_port_tl { center }
+               { ( \__sankey_get:nn { h } {#1} - \__sankey_get:nn {#2} {#1} * \l__sankey_unit_fp ) / 2 } { 0 }
+         }
+   }
+\cs_new_protected:Npn \__sankey_assign:nnnn #1#2#3#4
+   {
+      \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn {#2} {#1} }
+      \__sankey_set:nne {#4} {#1} { \__sankey_get:nV {#3} \l__sankey_a_tl }
+      \__sankey_set:nVe {#3} \l__sankey_a_tl
+         { \fp_eval:n { \__sankey_get:nV {#3} \l__sankey_a_tl + \__sankey_get:nn { fval } {#1} * \l__sankey_unit_fp } }
+   }
+% `sorted': by the other end, then by group; `group': by group, then by the other end
+\cs_new_protected:Npn \__sankey_sort_flows:Nn #1#2
+   {
+      \str_case:Vn \l__sankey_forder_tl
+         {
+            { sorted } { \seq_sort:Nn #1 { \__sankey_cmp:nnnnn {#2} {##1} {##2} { st } { fgi } } }
+            { group } { \seq_sort:Nn #1 { \__sankey_cmp:nnnnn {#2} {##1} {##2} { fgi } { st } } }
+         }
+   }
+\cs_new:Npn \__sankey_key:nnn #1#2#3 % end, flow, key
+   { \str_if_eq:nnTF {#3} { st } { \__sankey_get:ne { st } { \__sankey_get:nn {#1} {#2} } } { \__sankey_get:nn { fgi } {#2} } }
+\cs_new_protected:Npn \__sankey_cmp:nnnnn #1#2#3#4#5
+   {
+      \fp_compare:nNnTF { \__sankey_key:nnn {#1} {#2} {#4} } > { \__sankey_key:nnn {#1} {#3} {#4} }
+         { \sort_return_swapped: }
+         {
+            \bool_lazy_and:nnTF
+               { \fp_compare_p:nNn { \__sankey_key:nnn {#1} {#2} {#4} } = { \__sankey_key:nnn {#1} {#3} {#4} } }
+               { \fp_compare_p:nNn { \__sankey_key:nnn {#1} {#2} {#5} } > { \__sankey_key:nnn {#1} {#3} {#5} } }
+               { \sort_return_swapped: } { \sort_return_same: }
+         }
+   }
+
+% Drawing
+% a point of the layout (u along the flows, s across them) as a TikZ coordinate
+\cs_new:Npn \__sankey_point:nn #1#2
+   {
+      \int_case:nn { \l__sankey_dir_int }
+         {
+            { 0 } { ( \fp_to_dim:n {#1} , \fp_to_dim:n { - (#2) } ) }
+            { 1 } { ( \fp_to_dim:n {#2} , \fp_to_dim:n { - (#1) } ) }
+            { 2 } { ( \fp_to_dim:n { - (#1) } , \fp_to_dim:n { - (#2) } ) }
+            { 3 } { ( \fp_to_dim:n {#2} , \fp_to_dim:n {#1} ) }
+         }
+   }
+% the shading keys that run a gradient from #1 to #2 along the flow
+\cs_new:Npn \__sankey_gradient:nn #1#2
+   {
+      \int_case:nn { \l__sankey_dir_int }
+         {
+            { 0 } { left~color = {#1} , right~color = {#2} }
+            { 1 } { top~color = {#1} , bottom~color = {#2} }
+            { 2 } { left~color = {#2} , right~color = {#1} }
+            { 3 } { top~color = {#2} , bottom~color = {#1} }
+         }
+   }
+
+% how a flow is painted: `auto' is `group' for a flow with a group and `gradient' for one without
+\cs_new_protected:Npn \__sankey_draw_flow:n #1
+   {
+      \fp_compare:nNnT { \__sankey_get:nn { fval } {#1} } > { 0 }
+         {
+            \group_begin:
+            \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn { ffrom } {#1} }
+            \tl_set:Ne \l__sankey_b_tl { \__sankey_get:nn { fto } {#1} }
+            % a part of a long flow takes its colors from the whole flow
+            \tl_set:Ne \l__sankey_orig_tl { \__sankey_get_or:nnn { forig } {#1} {#1} }
+            \tl_set:Ne \l__sankey_item_tl
+               { \__sankey_get_or:nVn { ffromc } \l__sankey_orig_tl { \__sankey_get:ne { rc } { \__sankey_get:nV { ffrom } \l__sankey_orig_tl } } }
+            \colorlet { sankey@from } { \l__sankey_item_tl }
+            \tl_set:Ne \l__sankey_item_tl
+               { \__sankey_get_or:nVn { ftoc } \l__sankey_orig_tl { \__sankey_get:ne { rc } { \__sankey_get:nV { fto } \l__sankey_orig_tl } } }
+            \colorlet { sankey@to } { \l__sankey_item_tl }
+            \tl_set:Ne \l__sankey_fadeval_tl { \__sankey_get_or:nnn { ffade } {#1} { \l__sankey_fade_tl } }
+            % a gradient runs over the whole of a long flow: each part shows its stretch of it
+            \colorlet { sankey@gfrom } { sankey@from }
+            \colorlet { sankey@gto } { sankey@to }
+            \__sankey_has:nnT { forig } {#1} { \__sankey_segment_colors:n {#1} }
+            \tl_set:Ne \l__sankey_text_tl { \fp_eval:n { \__sankey_get_or:nnn { ftint } {#1} { \l__sankey_tint_fp } } }
+            % a flow of one color: its own, its group's, or the one of `flow color'
+            \__sankey_has:nnTF { fcolor } {#1}
+               { \tl_set:Ne \l__sankey_item_tl { \__sankey_get:nn { fcolor } {#1} } }
+               {
+                  \__sankey_has:nnTF { fgroup } {#1}
+                     { \tl_set:Ne \l__sankey_item_tl { \__sankey_get:ne { grc } { \__sankey_get:nn { fgroup } {#1} } } }
+                     {
+                        \clist_if_in:nVTF { auto, gradient, group, source, forward, target, backward } \l__sankey_flowcolor_tl
+                           { \tl_set:Nn \l__sankey_item_tl { sankey@from } }
+                           { \tl_set_eq:NN \l__sankey_item_tl \l__sankey_flowcolor_tl }
+                     }
+               }
+            \colorlet { sankey@flow } { \l__sankey_item_tl }
+            \tl_set:Ne \l__sankey_paint_tl
+               {
+                  \__sankey_has:nnTF { fcolor } {#1}
+                     { \exp_not:N \fill [ fill = sankey@flow ! \l__sankey_text_tl }
+                     {
+                        \str_case_e:nnF { \l__sankey_flowcolor_tl }
+                           {
+                              { auto }
+                                 {
+                                    \__sankey_has:nnTF { fgroup } {#1}
+                                       { \__sankey_group_fill:n {#1} }
+                                       { \exp_not:N \shade [ \__sankey_gradient:nn { sankey@gfrom ! \l__sankey_text_tl } { sankey@gto ! \l__sankey_text_tl } }
+                                 }
+                              { gradient } { \exp_not:N \shade [ \__sankey_gradient:nn { sankey@gfrom ! \l__sankey_text_tl } { sankey@gto ! \l__sankey_text_tl } }
+                              { group }
+                                 {
+                                    \__sankey_has:nnTF { fgroup } {#1}
+                                       { \__sankey_group_fill:n {#1} }
+                                       { \exp_not:N \fill [ fill = sankey@from ! \l__sankey_text_tl }
+                                 }
+                              { source } { \exp_not:N \fill [ fill = sankey@from ! \l__sankey_text_tl }
+                              { forward } { \exp_not:N \fill [ fill = sankey@from ! \l__sankey_text_tl }
+                              { target } { \exp_not:N \fill [ fill = sankey@to ! \l__sankey_text_tl }
+                              { backward } { \exp_not:N \fill [ fill = sankey@to ! \l__sankey_text_tl }
+                           }
+                           { \exp_not:N \fill [ fill = sankey@flow ! \l__sankey_text_tl }
+                     }
+                  , opacity = \fp_eval:n { \__sankey_get_or:nnn { fopac } {#1} { \l__sankey_opacity_fp } } ,
+                  \__sankey_fading:nn { \l__sankey_fadeval_tl }
+                     { \int_case:nn { \l__sankey_dir_int } { { 0 } { 0 } { 1 } { -90 } { 2 } { 180 } { 3 } { 90 } } }
+                  /sankey/every~flow \__sankey_get_or:nnn { fstyle } {#1} { } ]
+               }
+            % the outline is drawn later: its color gets a name of its own
+            \int_gincr:N \g__sankey_edge_int
+            \use:e { \exp_not:N \xglobal \exp_not:N \colorlet { sankey@edge@ \int_use:N \g__sankey_edge_int } } { \__sankey_outline_color: !65!black }
+            \cs_set_nopar:Npe \sankey@outline
+               {
+                  \str_case:VnF \l__sankey_outline_tl
+                     {
+                        { none } { }
+                        { auto } { draw = sankey@edge@ \int_use:N \g__sankey_edge_int , line~width = .25pt ,
+                                   opacity = \fp_eval:n { \__sankey_get_or:nnn { fopac } {#1} { \l__sankey_opacity_fp } } }
+                     }
+                     { draw = \l__sankey_outline_tl , line~width = .25pt }
+               }
+            \__sankey_ribbon:n {#1}
+            \group_end:
+         }
+   }
+% where the parts of a long flow meet: they overlap a little if the flows are opaque (half the
+% seam each), and not at all if they are not, since the overlap would show darker
+\cs_new:Npn \__sankey_joint_seam:
+   { \fp_compare:nNnTF \l__sankey_opacity_fp > { .999 } { \l__sankey_seam_fp / 2 } { 0 } }
+% the color of a flow's outline: its own color, darker (gradients: the color of their target)
+\cs_new:Npn \__sankey_outline_color: { sankey@flow }
+% the fading keys (with a trailing comma) that fade a band running at angle #2
+\cs_new:Npn \__sankey_fading:nn #1#2
+   { \str_if_eq:eeF {#1} { none } { path~fading = sankey~fade~#1 , fading~angle = #2 , } }
+\cs_new:Npn \__sankey_group_fill:n #1
+   { \exp_not:N \fill [ fill = sankey@flow ! \l__sankey_text_tl }
+\cs_new_protected:Npn \__sankey_ribbon:n #1
+   { \__sankey_has:nnTF { floop } {#1} { \__sankey_loop:n {#1} } { \__sankey_band:n {#1} } }
+\cs_new_protected:Npn \__sankey_band:n #1
+   {
+      \fp_set:Nn \l__sankey_s_fp { \__sankey_get:nn { fval } {#1} * \l__sankey_unit_fp }
+      \tl_set:Ne \l__sankey_item_tl
+         {
+            % a band starts at the end side of its source and ends at the start side of its target, or,
+            % for a waypoint, at its end side, where the next part goes on; it reaches by `seam' under
+            % real nodes only, so that the parts of a long flow meet without overlapping
+            {
+               \fp_eval:n
+                  {
+                     \__sankey_get:nV { cu } \l__sankey_a_tl + \l__sankey_width_fp
+                     - \__sankey_has:nVTF { dummy } \l__sankey_a_tl { \__sankey_joint_seam: } { \l__sankey_seam_fp }
+                  }
+            }
+            {
+               \fp_eval:n
+                  {
+                     \__sankey_get:nV { cu } \l__sankey_b_tl
+                     + \__sankey_has:nVTF { dummy } \l__sankey_b_tl { \l__sankey_width_fp + \__sankey_joint_seam: } { \l__sankey_seam_fp }
+                  }
+            }
+            { \__sankey_get:nn { fsa } {#1} }
+            { \__sankey_get:nn { fsb } {#1} }
+            { \fp_eval:n { \__sankey_get_or:nnn { fcurv } {#1} { \l__sankey_curv_fp } } }
+         }
+      \exp_after:wN \__sankey_ribbon:nnnnn \l__sankey_item_tl
+   }
+\cs_new_protected:Npn \__sankey_ribbon:nnnnn #1#2#3#4#5 % u start, u end, s start, s end, curvature
+   {
+      % against the thin lines of anti-aliasing: the band reaches a little under the nodes at its
+      % ends, and, if it is opaque, a little over its neighbour below
+      \bool_lazy_and:nnT { \fp_compare_p:nNn \l__sankey_opacity_fp > { .999 } } { \str_if_eq_p:Vn \l__sankey_outline_tl { none } }
+         { \fp_add:Nn \l__sankey_s_fp { \l__sankey_seam_fp } }
+      \__sankey_ribbon_seam:nnnnn {#1} {#2} {#3} {#4} {#5}
+   }
+\cs_new_protected:Npn \__sankey_ribbon_seam:nnnnn #1#2#3#4#5
+   {
+      \use:e
+         {
+            \exp_not:N \sankey@ribbon { \exp_not:V \l__sankey_paint_tl }
+               { \__sankey_point:nn {#1} {#3} }
+               { \__sankey_point:nn { #1 + #5 * ( #2 - #1 ) } {#3} }
+               { \__sankey_point:nn { #2 - #5 * ( #2 - #1 ) } {#4} }
+               { \__sankey_point:nn {#2} {#4} }
+               { \__sankey_point:nn {#2} { #4 + \l__sankey_s_fp } }
+               { \__sankey_point:nn { #2 - #5 * ( #2 - #1 ) } { #4 + \l__sankey_s_fp } }
+               { \__sankey_point:nn { #1 + #5 * ( #2 - #1 ) } { #3 + \l__sankey_s_fp } }
+               { \__sankey_point:nn {#1} { #3 + \l__sankey_s_fp } }
+         }
+   }
+
+\cs_new_protected:Npn \__sankey_draw_node:n #1
+   { \__sankey_has:nnF { dummy } {#1} { \__sankey_draw_box:n {#1} } }
+\cs_new_protected:Npn \__sankey_draw_box:n #1
+   {
+      \group_begin:
+      \tl_set:Ne \l__sankey_item_tl { \__sankey_get:nn { rc } {#1} }
+      \colorlet { sankey@node } { \l__sankey_item_tl }
+      \fp_set:Nn \l__sankey_s_fp { \__sankey_get:nn { st } {#1} }
+      \fp_set:Nn \l__sankey_bottom_fp { \__sankey_get:nn { st } {#1} + \__sankey_get:nn { h } {#1} }
+      \fp_set:Nn \l__sankey_ox_fp { \__sankey_get:nn { cu } {#1} }
+      \fp_set:Nn \l__sankey_oy_fp { \__sankey_get:nn { cu } {#1} + \l__sankey_width_fp }
+      % the corners: `node rounding' for all, `outer rounding' on the side of a node where no flow meets it
+      \fp_set:Nn \l__sankey_val_fp { min ( \l__sankey_width_fp , \__sankey_get:nn { h } {#1} ) / 2 }
+      \tl_set:Ne \l__sankey_a_tl
+         {
+            \fp_to_dim:n
+               {
+                  min ( \l__sankey_val_fp , max ( \l__sankey_nround_fp ,
+                     ( \__sankey_get:nn { in } {#1} = 0 ) * \l__sankey_oround_fp ) )
+               }
+         }
+      \tl_set:Ne \l__sankey_b_tl
+         {
+            \fp_to_dim:n
+               {
+                  min ( \l__sankey_val_fp , max ( \l__sankey_nround_fp ,
+                     ( \__sankey_get:nn { out } {#1} = 0 ) * \l__sankey_oround_fp ) )
+               }
+         }
+      \tl_set:Ne \l__sankey_opts_tl
+         {
+            fill = sankey@node , /sankey/every~node ,
+            \fp_compare:nNnT { \__sankey_get:nn { in } {#1} } = { 0 } { /sankey/every~first~node , }
+            \fp_compare:nNnT { \__sankey_get:nn { out } {#1} } = { 0 } { /sankey/every~last~node , }
+            \exp_not:e { \__sankey_get_or:nnn { style } {#1} { } }
+         }
+      \use:e
+         {
+            \exp_not:N \sankey@path { \exp_not:V \l__sankey_opts_tl }
+               {
+                  \__sankey_point:nn { ( \l__sankey_ox_fp + \l__sankey_oy_fp ) / 2 } { \l__sankey_bottom_fp }
+                  [ rounded~corners = \l__sankey_a_tl ] -- \__sankey_point:nn { \l__sankey_ox_fp } { \l__sankey_bottom_fp }
+                  [ rounded~corners = \l__sankey_a_tl ] -- \__sankey_point:nn { \l__sankey_ox_fp } { \l__sankey_s_fp }
+                  [ rounded~corners = \l__sankey_b_tl ] -- \__sankey_point:nn { \l__sankey_oy_fp } { \l__sankey_s_fp }
+                  [ rounded~corners = \l__sankey_b_tl ] -- \__sankey_point:nn { \l__sankey_oy_fp } { \l__sankey_bottom_fp }
+                  [ sharp~corners ]
+               }
+            % the node itself, for its name and anchors
+            \exp_not:N \sankey@node
+               { \__sankey_point:nn { \__sankey_get:nn { cu } {#1} + \l__sankey_width_fp / 2 }
+                    { \__sankey_get:nn { st } {#1} + \__sankey_get:nn { h } {#1} / 2 } }
+               { \fp_to_dim:n { \int_if_odd:nTF { \l__sankey_dir_int } { \__sankey_get:nn { h } {#1} } { \l__sankey_width_fp } } }
+               { \fp_to_dim:n { \int_if_odd:nTF { \l__sankey_dir_int } { \l__sankey_width_fp } { \__sankey_get:nn { h } {#1} } } }
+               { draw = none , fill = none }
+               { \l__sankey_prefix_tl #1 }
+         }
+      \group_end:
+   }
+
+% the side of a label: `auto' puts the label of the first column before it and all others
+% after it, and the value label opposite
+\cs_new:Npn \__sankey_side:nn #1#2 % node, label | vlabel
+   {
+      \__sankey_side_of:nnn {#1} {#2}
+         { \__sankey_has:nnTF { #2pos } {#1} { \__sankey_get:nn { #2pos } {#1} } { \tl_use:c { l__sankey_#2pos_tl } } }
+   }
+\cs_new:Npn \__sankey_side_of:nnn #1#2#3
+   {
+      \str_case:enF {#3}
+         {
+            { auto }
+               {
+                  \bool_if:nTF
+                     { \int_compare_p:nNn { \__sankey_get:nn { c } {#1} } = { 0 } && \str_if_eq_p:nn {#2} { label }
+                       || \int_compare_p:nNn { \__sankey_get:nn { c } {#1} } > { 0 } && \str_if_eq_p:nn {#2} { vlabel } }
+                     { before } { after }
+               }
+            { left } { \int_case:nnF { \l__sankey_dir_int } { { 0 } { before } { 2 } { after } } { before } }
+            { right } { \int_case:nnF { \l__sankey_dir_int } { { 0 } { after } { 2 } { before } } { after } }
+            { above } { \int_case:nnF { \l__sankey_dir_int } { { 1 } { before } { 3 } { after } } { before } }
+            { below } { \int_case:nnF { \l__sankey_dir_int } { { 1 } { after } { 3 } { before } } { after } }
+         }
+         {#3}
+   }
+% the anchor of a label on side #1
+\cs_new:Npn \__sankey_anchor:n #1
+   {
+      \str_if_eq:nnTF {#1} { after }
+         { \int_case:nn { \l__sankey_dir_int } { { 0 } { west } { 1 } { north } { 2 } { east } { 3 } { south } } }
+         { \int_case:nn { \l__sankey_dir_int } { { 0 } { east } { 1 } { south } { 2 } { west } { 3 } { north } } }
+   }
+\cs_new_protected:Npn \__sankey_draw_labels:
+   {
+      \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int }
+         {
+            \clist_map_inline:nn { before, after, inside }
+               {
+                  \fp_set:Nn \l__sankey_prev_fp { -inf }
+                  \seq_map_inline:cn { g__sankey_col_##1_seq }
+                     {
+                        \__sankey_has:nnF { dummy } {########1} {
+                        \str_if_eq:eeT { \__sankey_side:nn {########1} { label } } {####1}
+                           { \__sankey_label:nnn {########1} { label } {####1} }
+                        \str_if_eq:eeT { \__sankey_side:nn {########1} { vlabel } } {####1}
+                           { \__sankey_label:nnn {########1} { vlabel } {####1} }
+                        }
+                     }
+               }
+         }
+   }
+\cs_new_protected:Npn \__sankey_label_text:nn #1#2
+   {
+      \__sankey_has:nnTF {#2} {#1}
+         { \tl_set:Ne \l__sankey_text_tl { \__sankey_get:nn {#2} {#1} } }
+         { \tl_set_eq:Nc \l__sankey_text_tl { l__sankey_#2_tl } }
+   }
+% one label: built, measured along the column, and pushed down just as far as the label
+% before it on the same side needs
+\cs_new_protected:Npn \__sankey_label:nnn #1#2#3 % node, label | vlabel, side
+   {
+      \__sankey_label_text:nn {#1} {#2}
+      \tl_if_blank:VF \l__sankey_text_tl
+         {
+            \group_begin:
+            \tl_set:Nn \l__sankey_cur_tl {#1}
+            \fp_set:Nn \l__sankey_mid_fp { \__sankey_get:nn { st } {#1} + \__sankey_get:nn { h } {#1} / 2 }
+            \tl_set:Ne \l__sankey_opts_tl
+               {
+                  \str_if_eq:nnTF {#3} { inside } { anchor = center , /sankey/every~inside~label , }
+                     {
+                        anchor = \__sankey_anchor:n {#3} , outer~sep = 0pt ,
+                        \bool_if:NT \l__sankey_backdrop_bool { /sankey/every~backdrop , }
+                     }
+                  \str_if_eq:nnTF {#2} { label } { /sankey/every~label } { /sankey/every~value~label }
+                  \exp_not:e { \__sankey_get_or:nnn { #2style } {#1} { } } ,
+                  name = { \l__sankey_prefix_tl #1 - \str_if_eq:nnTF {#2} { label } { label } { value } }
+               }
+            \exp_args:NVV \sankey@buildlate \l__sankey_opts_tl \l__sankey_text_tl
+            \str_if_eq:nnTF {#3} { inside }
+               { \fp_set_eq:NN \l__sankey_s_fp \l__sankey_mid_fp }
+               {
+                  \fp_set:Nn \l__sankey_s_fp
+                     { max ( \l__sankey_mid_fp , \l__sankey_prev_fp + \l__sankey_lsep_fp + \__sankey_extent:n { before } ) }
+                  \fp_gset:Nn \g__sankey_prev_fp { \l__sankey_s_fp + \__sankey_extent:n { after } }
+               }
+            \fp_set:Nn \l__sankey_val_fp
+               {
+                  \__sankey_get:nn { cu } {#1} + \str_case:nn {#3}
+                     {
+                        { after } { \l__sankey_width_fp + \l__sankey_ldist_fp }
+                        { before } { - \l__sankey_ldist_fp }
+                        { inside } { \l__sankey_width_fp / 2 }
+                     }
+               }
+            \exp_args:Ne \sankey@placelate { \__sankey_point:nn { \l__sankey_val_fp } { \l__sankey_s_fp } }
+            \fp_compare:nNnT { \l__sankey_s_fp - \l__sankey_mid_fp } > \l__sankey_leader_fp
+               {
+                  \use:e
+                     {
+                        \exp_not:N \sankey@leader
+                           {
+                              \__sankey_point:nn
+                                 { \__sankey_get:nn { cu } {#1} + \str_if_eq:nnTF {#3} { after } { \l__sankey_width_fp } { 0 } }
+                                 { \l__sankey_mid_fp }
+                           }
+                           { \__sankey_point:nn { \l__sankey_val_fp } { \l__sankey_s_fp } }
+                     }
+               }
+            \group_end:
+            \str_if_eq:nnF {#3} { inside } { \fp_set_eq:NN \l__sankey_prev_fp \g__sankey_prev_fp }
+         }
+   }
+\fp_new:N \g__sankey_prev_fp
+% how far the label just built reaches before and after its anchor, across the flows
+\cs_new:Npn \__sankey_extent:n #1
+   {
+      \int_if_odd:nTF { \l__sankey_dir_int }
+         {
+            \str_if_eq:nnTF {#1} { before }
+               { \dim_to_fp:n { \sankey@late@ox - \sankey@late@minx } }
+               { \dim_to_fp:n { \sankey@late@maxx - \sankey@late@ox } }
+         }
+         {
+            \str_if_eq:nnTF {#1} { before }
+               { \dim_to_fp:n { \sankey@late@maxy - \sankey@late@oy } }
+               { \dim_to_fp:n { \sankey@late@oy - \sankey@late@miny } }
+         }
+   }
+
+\cs_new_protected:Npn \__sankey_draw_titles:
+   {
+      \int_step_inline:nn { \clist_count:N \l__sankey_titles_clist }
+         {
+            \exp_args:Nne \__sankey_title:nnn { } { \int_eval:n { ##1 - 1 } }
+               { \exp_not:e { \clist_item:Nn \l__sankey_titles_clist {##1} } }
+         }
+      \seq_map_inline:Nn \g__sankey_titles_seq { \__sankey_title:nnn ##1 }
+   }
+\cs_new_protected:Npn \__sankey_title:nnn #1#2#3 % keys, column, text
+   {
+      \use:e
+         {
+            \exp_not:N \sankey@text
+               { \__sankey_point:nn { \__sankey_colu:n {#2} + \l__sankey_width_fp / 2 } { - \l__sankey_tdist_fp } }
+               { anchor = \int_if_odd:nTF { \l__sankey_dir_int } { east } { base } ,
+                 /sankey/every~column~title , \exp_not:n {#1} }
+               { \exp_not:n {#3} }
+         }
+   }
+
+% the text of the legend: a swatch and a name for each group (or node)
+\cs_new_protected:Npn \__sankey_legend_text:
+   {
+      \tl_clear:N \l__sankey_text_tl
+      \str_if_eq:VnF \l__sankey_legend_tl { none }
+         {
+            \str_if_eq:VnTF \l__sankey_legendfor_tl { groups }
+               {
+                  \seq_map_inline:Nn \g__sankey_groups_seq
+                     { \__sankey_legend_item:ee { \__sankey_get:nn { grc } {##1} } { \__sankey_get_or:nnn { glabel } {##1} {##1} } }
+               }
+               {
+                  \seq_map_inline:Nn \g__sankey_nodes_seq
+                     {
+                        \bool_lazy_and:nnT { \int_compare_p:nNn { \__sankey_get:nn { vis } {##1} } = { 1 } } { ! \__sankey_has_p:nn { dummy } {##1} }
+                           {
+                              \__sankey_legend_item:ee { \__sankey_get:nn { rc } {##1} }
+                                 { \exp_not:N \__sankey_with_node:nn {##1} { \exp_not:V \l__sankey_label_tl } }
+                           }
+                     }
+               }
+         }
+   }
+\cs_new:Npn \__sankey_legend_options:
+   {
+      \str_case:Vn \l__sankey_legend_tl
+         {
+            { right } { anchor = west , xshift = 3mm , align = left }
+            { left } { anchor = east , xshift = -3mm , align = left }
+            { below } { anchor = north , yshift = -2mm }
+            { above } { anchor = south , yshift = 2mm }
+         }
+      , /sankey/every~legend
+   }
+% how wide a legend beside the diagram is, with its gap
+\cs_new_protected:Npn \__sankey_legend_width:
+   {
+      \fp_gzero:N \g__sankey_prev_fp
+      \bool_lazy_or:nnT { \str_if_eq_p:Vn \l__sankey_legend_tl { right } } { \str_if_eq_p:Vn \l__sankey_legend_tl { left } }
+         {
+            \__sankey_legend_text:
+            \tl_if_empty:NF \l__sankey_text_tl
+               {
+                  \group_begin:
+                  \tl_set:Ne \l__sankey_opts_tl { \__sankey_legend_options: }
+                  \exp_args:NVV \sankey@buildlate \l__sankey_opts_tl \l__sankey_text_tl
+                  \fp_gset:Nn \g__sankey_prev_fp { \dim_to_fp:n { \sankey@late@maxx - \sankey@late@minx + 3mm } }
+                  \group_end:
+               }
+         }
+   }
+\cs_new_protected:Npn \__sankey_draw_legend:
+   {
+      \__sankey_legend_text:
+      \tl_if_empty:NF \l__sankey_text_tl
+         {
+            \use:e
+               {
+                  \exp_not:N \sankey@text
+                     {
+                        ( current~bounding~box. \str_case:Vn \l__sankey_legend_tl
+                           { { right } { east } { left } { west } { below } { south } { above } { north } } )
+                     }
+                     { \__sankey_legend_options: , name = { \l__sankey_prefix_tl legend } }
+                     { \exp_not:V \l__sankey_text_tl }
+               }
+         }
+   }
+\cs_new_protected:Npn \__sankey_legend_item:nn #1#2
+   {
+      \tl_if_empty:NF \l__sankey_text_tl
+         {
+            \tl_put_right:Ne \l__sankey_text_tl
+               { \str_case:Vn \l__sankey_legend_tl { { right } { \exp_not:N \\ } { left } { \exp_not:N \\ } { below } { \exp_not:N \quad } { above } { \exp_not:N \quad } } }
+         }
+      \tl_put_right:Nn \l__sankey_text_tl { \sankey@swatch {#1} \enspace #2 }
+   }
+\cs_generate_variant:Nn \__sankey_legend_item:nn { ee }
+\cs_new_protected:Npn \__sankey_with_node:nn #1#2 { \group_begin: \tl_set:Nn \l__sankey_cur_tl {#1} #2 \group_end: }
+
+% Routes: bands steered by hand, turtle-like. A route has a current port
+% (its center, the angle it runs at, and its value); every instruction
+% draws from there and moves the port on.
+\tl_new:N \l__sankey_route_tl
+\fp_new:N \l__sankey_rw_fp
+\fp_new:N \l__sankey_ox_fp
+\fp_new:N \l__sankey_oy_fp
+\fp_new:N \l__sankey_sign_fp
+\fp_new:N \l__sankey_base_fp
+\fp_new:N \l__sankey_offset_fp
+\fp_new:N \l__sankey_rrad_fp
+\msg_new:nnn { tikz-sankey } { split-too-wide }
+   { The ~ parts ~ of ~ route ~ `#1' ~ carry ~ #2, ~ more ~ than ~ its ~ #3. }
+\msg_new:nnn { tikz-sankey } { unknown-route } { There ~ is ~ no ~ route ~ `#1' ~ (start ~ it ~ with ~ \token_to_str:N \sankeyStart). }
+\cs_new:Npn \__sankey_r:n #1 { \__sankey_get:nV {#1} \l__sankey_route_tl }
+\cs_new_protected:Npn \__sankey_rset:nn #1#2 { \__sankey_set:nVe {#1} \l__sankey_route_tl {#2} }
+\cs_new_protected:Npn \__sankey_use_route:n #1
+   {
+      \tl_set:Ne \l__sankey_route_tl { \tl_trim_spaces:e { \tl_to_str:e {#1} } }
+      \__sankey_has:nVTF { ra } \l__sankey_route_tl
+         {
+            \bool_set_true:N \l__sankey_ok_bool
+            \fp_set:Nn \l__sankey_rw_fp { \__sankey_r:n { v } * \l__sankey_unit_fp }
+         }
+         {
+            \bool_set_false:N \l__sankey_ok_bool
+            \msg_error:nnV { tikz-sankey } { unknown-route } \l__sankey_route_tl
+         }
+   }
+% a point relative to the port: #1 along the route, #2 to its left
+\cs_new:Npn \__sankey_rp:nn #1#2
+   {
+      ( \fp_to_dim:n { \__sankey_r:n { rx } + cosd ( \__sankey_r:n { ra } ) * ( #1 ) - sind ( \__sankey_r:n { ra } ) * ( #2 ) } ,
+        \fp_to_dim:n { \__sankey_r:n { ry } + sind ( \__sankey_r:n { ra } ) * ( #1 ) + cosd ( \__sankey_r:n { ra } ) * ( #2 ) } )
+   }
+\cs_new:Npn \__sankey_rpaint:n #1
+   {
+      fill = sankey@route ! \__sankey_r:n { rtint } , opacity = \__sankey_r:n { ropac } ,
+      \__sankey_fading:nn { \__sankey_r:n { rfade } } {#1} /sankey/every~flow \__sankey_r:n { rstyle }
+   }
+\cs_new_protected:Npn \__sankey_route_color:
+   {
+      \tl_set:Ne \l__sankey_item_tl { \__sankey_r:n { rcol } }
+      \colorlet { sankey@route } { \l__sankey_item_tl }
+   }
+\cs_new_protected:Npn \__sankey_route_mark:
+   { \use:e { \exp_not:N \path \__sankey_rp:nn { 0 } { 0 } coordinate [ name = { \l__sankey_prefix_tl \l__sankey_route_tl } ] ; } }
+\cs_new_protected:Npn \__sankey_route_unit:
+   {
+      \tl_if_blank:VF \l__sankey_unit_tl { \fp_set:Nn \l__sankey_unit_fp { \dim_to_fp:n { \l__sankey_unit_tl } } }
+      \bool_lazy_or:nnT { \fp_compare_p:nNn \l__sankey_unit_fp = { 0 } } { \fp_compare_p:nNn \l__sankey_unit_fp = { inf } }
+         { \fp_set:Nn \l__sankey_unit_fp { 1 } }
+   }
+
+\cs_new_protected:Npn \__sankey_start:nnn #1#2#3 % keys, name, value
+   {
+      \__sankey_route_unit:
+      \tl_set:Ne \l__sankey_route_tl { \tl_trim_spaces:e { \tl_to_str:e {#2} } }
+      \int_gincr:N \g__sankey_route_int
+      \__sankey_rset:nn { v } { \fp_eval:n {#3} }
+      \__sankey_rset:nn { rx } { 0 }
+      \__sankey_rset:nn { ry } { 0 }
+      \__sankey_rset:nn { ra } { 0 }
+      \__sankey_rset:nn { rcol } { \__sankey_palette:Nn \l__sankey_palette_clist { \g__sankey_route_int } }
+      \__sankey_rset:nn { rtint } { 100 }
+      \__sankey_rset:nn { ropac } { 1 }
+      \__sankey_rset:nn { rfade } { none }
+      \__sankey_rset:nn { rrad } { \fp_use:N \l__sankey_rrad_fp }
+      \__sankey_rset:nn { rstyle } { }
+      \__sankey_rset:nn { rbarstyle } { }
+      \__sankey_rset:nn { rlside } { ahead }
+      \fp_set:Nn \l__sankey_rw_fp { \__sankey_r:n { v } * \l__sankey_unit_fp }
+      \pgfqkeys { /sankey/route } {#1}
+      \__sankey_route_mark:
+   }
+\cs_new_protected:Npn \__sankey_route:nn #1#2
+   {
+      \__sankey_route_unit:
+      \__sankey_use_route:n {#1}
+      \bool_if:NT \l__sankey_ok_bool { \pgfqkeys { /sankey/route } {#2} \__sankey_route_mark: }
+   }
+
+\cs_new_protected:Npn \__sankey_forward:n #1
+   {
+      \fp_set:Nn \l__sankey_s_fp { \dim_to_fp:n {#1} }
+      \group_begin:
+      \__sankey_route_color:
+      \use:e
+         {
+            \exp_not:N \sankey@poly { \__sankey_rpaint:n { \__sankey_r:n { ra } } }
+               {
+                  \__sankey_rp:nn { 0 } { \l__sankey_rw_fp / 2 } -- \__sankey_rp:nn { \l__sankey_s_fp } { \l__sankey_rw_fp / 2 } --
+                  \__sankey_rp:nn { \l__sankey_s_fp } { - \l__sankey_rw_fp / 2 } -- \__sankey_rp:nn { 0 } { - \l__sankey_rw_fp / 2 }
+               }
+         }
+      \group_end:
+      \__sankey_rset:nn { rfade } { none }
+      \__sankey_move:n { \l__sankey_s_fp }
+   }
+\cs_new_protected:Npn \__sankey_move:n #1
+   {
+      \__sankey_rset:nn { rx } { \fp_eval:n { \__sankey_r:n { rx } + cosd ( \__sankey_r:n { ra } ) * ( #1 ) } }
+      \__sankey_rset:nn { ry } { \fp_eval:n { \__sankey_r:n { ry } + sind ( \__sankey_r:n { ra } ) * ( #1 ) } }
+   }
+% a turn by #1 degrees, to the left if positive: the inner edge runs on a circle of the
+% route's radius, the outer edge on one as much wider as the route is
+\cs_new_protected:Npn \__sankey_turn:n #1
+   {
+      \fp_compare:nNnF {#1} = { 0 }
+         {
+            \fp_set:Nn \l__sankey_sign_fp { sign ( #1 ) }
+            \fp_set:Nn \l__sankey_s_fp { \__sankey_r:n { rrad } }
+            \fp_set:Nn \l__sankey_ox_fp
+               { \__sankey_r:n { rx } - \l__sankey_sign_fp * sind ( \__sankey_r:n { ra } ) * ( \l__sankey_rw_fp / 2 + \l__sankey_s_fp ) }
+            \fp_set:Nn \l__sankey_oy_fp
+               { \__sankey_r:n { ry } + \l__sankey_sign_fp * cosd ( \__sankey_r:n { ra } ) * ( \l__sankey_rw_fp / 2 + \l__sankey_s_fp ) }
+            \fp_set:Nn \l__sankey_base_fp { \__sankey_r:n { ra } - \l__sankey_sign_fp * 90 }
+            \group_begin:
+            \__sankey_route_color:
+            \use:e
+               {
+                  \exp_not:N \sankey@arcband { \__sankey_rpaint:n { \fp_eval:n { \__sankey_r:n { ra } + ( #1 ) / 2 } } }
+                     { \__sankey_rp:nn { 0 } { \l__sankey_sign_fp * \l__sankey_rw_fp / 2 } }
+                     { \fp_eval:n { \l__sankey_base_fp } } { \fp_eval:n {#1} } { \fp_to_dim:n { \l__sankey_s_fp } }
+                     {
+                        ( \fp_to_dim:n { \l__sankey_ox_fp + ( \l__sankey_s_fp + \l__sankey_rw_fp ) * cosd ( \l__sankey_base_fp + #1 ) } ,
+                          \fp_to_dim:n { \l__sankey_oy_fp + ( \l__sankey_s_fp + \l__sankey_rw_fp ) * sind ( \l__sankey_base_fp + #1 ) } )
+                     }
+                     { \fp_eval:n { \l__sankey_base_fp + #1 } } { \fp_eval:n { - ( #1 ) } }
+                     { \fp_to_dim:n { \l__sankey_s_fp + \l__sankey_rw_fp } }
+               }
+            \group_end:
+            \__sankey_rset:nn { rfade } { none }
+            \__sankey_rset:nn { rx } { \fp_eval:n { \l__sankey_ox_fp + ( \l__sankey_s_fp + \l__sankey_rw_fp / 2 ) * cosd ( \l__sankey_base_fp + #1 ) } }
+            \__sankey_rset:nn { ry } { \fp_eval:n { \l__sankey_oy_fp + ( \l__sankey_s_fp + \l__sankey_rw_fp / 2 ) * sind ( \l__sankey_base_fp + #1 ) } }
+            \__sankey_rset:nn { ra } { \fp_eval:n { \__sankey_r:n { ra } + #1 } }
+         }
+   }
+% a bar across the route, a node of its own (named <prefix><route>-bar), #1 long
+\cs_new_protected:Npn \__sankey_bar:n #1
+   {
+      \fp_set:Nn \l__sankey_s_fp { \dim_to_fp:n {#1} }
+      \group_begin:
+      \__sankey_route_color:
+      \use:e
+         {
+            \exp_not:N \sankey@text { \__sankey_rp:nn { 0 } { 0 } }
+               {
+                  shape = rectangle , inner~sep = 0pt , outer~sep = 0pt , fill = sankey@route , /sankey/every~bar
+                  \__sankey_r:n { rbarstyle } , minimum~width = \fp_to_dim:n { \l__sankey_s_fp } ,
+                  minimum~height = \fp_to_dim:n { \l__sankey_rw_fp } , rotate = \__sankey_r:n { ra } , anchor = west ,
+                  name = { \l__sankey_prefix_tl \l__sankey_route_tl -bar }
+               }
+               { }
+         }
+      \group_end:
+      \__sankey_move:n { \l__sankey_s_fp }
+   }
+% a tip: a triangle #1 long, which ends the route
+\cs_new_protected:Npn \__sankey_arrow:n #1
+   {
+      \group_begin:
+      \__sankey_route_color:
+      \use:e
+         {
+            \exp_not:N \sankey@poly { \__sankey_rpaint:n { \__sankey_r:n { ra } } }
+               {
+                  \__sankey_rp:nn { 0 } { \l__sankey_rw_fp / 2 } -- \__sankey_rp:nn { \dim_to_fp:n {#1} } { 0 } --
+                  \__sankey_rp:nn { 0 } { - \l__sankey_rw_fp / 2 }
+               }
+         }
+      \group_end:
+      \__sankey_move:n { \dim_to_fp:n {#1} }
+   }
+% the compass anchor nearest to the angle #1
+\cs_new:Npn \__sankey_compass:n #1
+   {
+      \int_case:nn { \int_mod:nn { \fp_eval:n { round ( ( #1 ) / 45 ) } + 800 } { 8 } }
+         {
+            { 0 } { east } { 1 } { north~east } { 2 } { north } { 3 } { north~west }
+            { 4 } { west } { 5 } { south~west } { 6 } { south } { 7 } { south~east }
+         }
+   }
+% a label side relative to the route: ahead, behind, left, right; a compass side
+% (east, north, west, south) becomes the relative one nearest to it
+\cs_new:Npn \__sankey_rside:n #1
+   {
+      \str_case:enF {#1}
+         {
+            { east } { \__sankey_rside_angle:n { 0 } }
+            { north } { \__sankey_rside_angle:n { 90 } }
+            { west } { \__sankey_rside_angle:n { 180 } }
+            { south } { \__sankey_rside_angle:n { 270 } }
+         }
+         {#1}
+   }
+\cs_new:Npn \__sankey_rside_angle:n #1
+   {
+      \int_case:nn { \int_mod:nn { \fp_eval:n { round ( ( #1 - ( \__sankey_r:n { ra } ) ) / 90 ) } + 400 } { 4 } }
+         { { 0 } { ahead } { 1 } { left } { 2 } { behind } { 3 } { right } }
+   }
+% a label at the port: ahead of it, behind it, or on its left or right
+\cs_new_protected:Npn \__sankey_rlabel:n #1
+   {
+      \group_begin:
+      \tl_set_eq:NN \l__sankey_cur_tl \l__sankey_route_tl
+      \tl_set:Ne \l__sankey_item_tl { \__sankey_rside:n { \__sankey_r:n { rlside } } }
+      \use:e
+         {
+            \exp_not:N \sankey@text
+               {
+                  \str_case:Vn \l__sankey_item_tl
+                     {
+                        { ahead } { \__sankey_rp:nn { \l__sankey_ldist_fp } { 0 } }
+                        { behind } { \__sankey_rp:nn { - \l__sankey_ldist_fp } { 0 } }
+                        { left } { \__sankey_rp:nn { 0 } { \l__sankey_rw_fp / 2 + \l__sankey_ldist_fp } }
+                        { right } { \__sankey_rp:nn { 0 } { - \l__sankey_rw_fp / 2 - \l__sankey_ldist_fp } }
+                     }
+               }
+               {
+                  anchor = \__sankey_compass:n
+                     {
+                        \__sankey_r:n { ra } + \str_case:Vn \l__sankey_item_tl
+                           { { ahead } { 180 } { behind } { 0 } { left } { -90 } { right } { 90 } }
+                     } ,
+                  \bool_if:NT \l__sankey_backdrop_bool { /sankey/every~backdrop , }
+                  /sankey/every~label , /sankey/every~route~label ,
+                  name = { \l__sankey_prefix_tl \l__sankey_route_tl -label }
+               }
+               { \exp_not:n {#1} }
+         }
+      \group_end:
+   }
+% the parts of a route, side by side from its left edge: `name = value, ...'
+\cs_new_protected:Npn \__sankey_split:nn #1#2
+   {
+      \__sankey_route_unit:
+      \__sankey_use_route:n {#1}
+      \bool_if:NT \l__sankey_ok_bool { \__sankey_split_parts:n {#2} }
+   }
+\cs_new_protected:Npn \__sankey_split_parts:n #1
+   {
+      \tl_set_eq:NN \l__sankey_a_tl \l__sankey_route_tl
+      \fp_zero:N \l__sankey_offset_fp
+      \keyval_parse:nnn { \__sankey_split_part:nn { 0 } } { \__sankey_split_part:nn } {#1}
+      \tl_set_eq:NN \l__sankey_route_tl \l__sankey_a_tl
+      \fp_compare:nNnT { \l__sankey_offset_fp } > { \l__sankey_rw_fp * 1.0001 }
+         {
+            \msg_warning:nneee { tikz-sankey } { split-too-wide } { \l__sankey_a_tl }
+               { \fp_eval:n { \l__sankey_offset_fp / \l__sankey_unit_fp } } { \__sankey_r:n { v } }
+         }
+   }
+\cs_new_protected:Npn \__sankey_split_part:nn #1#2
+   {
+      \tl_set_eq:NN \l__sankey_route_tl \l__sankey_a_tl
+      \fp_set:Nn \l__sankey_s_fp { ( #2 ) * \l__sankey_unit_fp }
+      \fp_set:Nn \l__sankey_ox_fp { \__sankey_r:n { rx } - sind ( \__sankey_r:n { ra } ) * ( \l__sankey_rw_fp / 2 - \l__sankey_offset_fp - \l__sankey_s_fp / 2 ) }
+      \fp_set:Nn \l__sankey_oy_fp { \__sankey_r:n { ry } + cosd ( \__sankey_r:n { ra } ) * ( \l__sankey_rw_fp / 2 - \l__sankey_offset_fp - \l__sankey_s_fp / 2 ) }
+      \fp_add:Nn \l__sankey_offset_fp { \l__sankey_s_fp }
+      \tl_set:Ne \l__sankey_b_tl { \tl_trim_spaces:e { \tl_to_str:e {#1} } }
+      \clist_map_inline:nn { ra, rcol, rtint, ropac, rrad, rstyle, rbarstyle }
+         { \__sankey_set:nVe {##1} \l__sankey_b_tl { \exp_not:e { \__sankey_r:n {##1} } } }
+      \__sankey_set:nVn { rlside } \l__sankey_b_tl { ahead }
+      \__sankey_set:nVn { rfade } \l__sankey_b_tl { none }
+      \__sankey_set:nVe { v } \l__sankey_b_tl { \fp_eval:n {#2} }
+      \__sankey_set:nVe { rx } \l__sankey_b_tl { \fp_use:N \l__sankey_ox_fp }
+      \__sankey_set:nVe { ry } \l__sankey_b_tl { \fp_use:N \l__sankey_oy_fp }
+      \tl_set_eq:NN \l__sankey_route_tl \l__sankey_b_tl
+      \__sankey_route_mark:
+   }
+% one route from routes that run side by side, the first one leftmost
+\cs_new_protected:Npn \__sankey_merge:nn #1#2
+   {
+      \__sankey_route_unit:
+      \seq_set_from_clist:Nn \l__sankey_path_seq {#2}
+      \fp_zero:N \l__sankey_val_fp
+      \bool_set_true:N \l__sankey_changed_bool
+      \seq_map_inline:Nn \l__sankey_path_seq
+         {
+            \__sankey_use_route:n {##1}
+            \bool_if:NTF \l__sankey_ok_bool
+               { \fp_add:Nn \l__sankey_val_fp { \__sankey_r:n { v } } }
+               { \bool_set_false:N \l__sankey_changed_bool }
+         }
+      \bool_if:NT \l__sankey_changed_bool { \__sankey_merge_into:n {#1} }
+   }
+\cs_new_protected:Npn \__sankey_merge_into:n #1
+   {
+      \__sankey_use_route:n { \seq_item:Nn \l__sankey_path_seq { 1 } }
+      \tl_set_eq:NN \l__sankey_a_tl \l__sankey_route_tl
+      \fp_set:Nn \l__sankey_s_fp { \l__sankey_val_fp * \l__sankey_unit_fp }
+      \fp_set:Nn \l__sankey_ox_fp { \__sankey_r:n { rx } - sind ( \__sankey_r:n { ra } ) * ( \l__sankey_rw_fp - \l__sankey_s_fp ) / 2 }
+      \fp_set:Nn \l__sankey_oy_fp { \__sankey_r:n { ry } + cosd ( \__sankey_r:n { ra } ) * ( \l__sankey_rw_fp - \l__sankey_s_fp ) / 2 }
+      \tl_set:Ne \l__sankey_b_tl { \tl_trim_spaces:e { \tl_to_str:e {#1} } }
+      \clist_map_inline:nn { ra, rcol, rtint, ropac, rrad, rstyle, rbarstyle }
+         { \__sankey_set:nVe {##1} \l__sankey_b_tl { \exp_not:e { \__sankey_r:n {##1} } } }
+      \__sankey_set:nVn { rlside } \l__sankey_b_tl { ahead }
+      \__sankey_set:nVn { rfade } \l__sankey_b_tl { none }
+      \__sankey_set:nVe { v } \l__sankey_b_tl { \fp_use:N \l__sankey_val_fp }
+      \__sankey_set:nVe { rx } \l__sankey_b_tl { \fp_use:N \l__sankey_ox_fp }
+      \__sankey_set:nVe { ry } \l__sankey_b_tl { \fp_use:N \l__sankey_oy_fp }
+      \tl_set_eq:NN \l__sankey_route_tl \l__sankey_b_tl
+      \__sankey_route_mark:
+   }
+\cs_new_protected:Npn \__sankey_route_at:n #1
+   {
+      \sankey@getpoint {#1}
+      \__sankey_rset:nn { rx } { \dim_to_fp:n { \sankey@px } }
+      \__sankey_rset:nn { ry } { \dim_to_fp:n { \sankey@py } }
+   }
+% a route that leaves (or enters) a node of the columns: at the middle of its end side
+\cs_new_protected:Npn \__sankey_route_node:n #1
+   {
+      \exp_args:Ne \__sankey_route_at:n
+         {
+            \__sankey_point:nn { \__sankey_get:nn { cu } {#1} + \l__sankey_width_fp }
+               { \__sankey_get:nn { st } {#1} + \__sankey_get:nn { h } {#1} / 2 }
+         }
+      \__sankey_rset:nn { ra } { \int_case:nn { \l__sankey_dir_int } { { 0 } { 0 } { 1 } { -90 } { 2 } { 180 } { 3 } { 90 } } }
+   }
+\pgfkeys
+   {
+      /sankey/route/.is~family,
+      /sankey/route/at/.code = \__sankey_route_at:n {#1},
+      /sankey/route/angle/.code = \__sankey_rset:nn { ra } { \fp_eval:n {#1} },
+      /sankey/route/from~node/.code = \__sankey_route_node:n {#1},
+      /sankey/route/forward/.code = \__sankey_forward:n {#1},
+      /sankey/route/turn/.code = \__sankey_turn:n {#1},
+      /sankey/route/left/.code = \__sankey_turn:n {#1},
+      /sankey/route/left/.default = 90,
+      /sankey/route/right/.code = \__sankey_turn:n { - ( #1 ) },
+      /sankey/route/right/.default = 90,
+      /sankey/route/bar/.code = \__sankey_bar:n {#1},
+      /sankey/route/bar/.default = 1.5mm,
+      /sankey/route/arrow/.code = \__sankey_arrow:n {#1},
+      /sankey/route/arrow/.default = 2mm,
+      /sankey/route/label/.code = \__sankey_rlabel:n {#1},
+      /sankey/route/label~side/.code = { \__sankey_choice:Nnnn \l__sankey_item_tl { label~side } {#1} { ahead, behind, left, right, east, north, west, south }
+         \__sankey_rset:nn { rlside } {#1} },
+      /sankey/route/color/.code = \__sankey_rset:nn { rcol } {#1},
+      /sankey/route/tint/.code = \__sankey_rset:nn { rtint } { \fp_eval:n {#1} },
+      /sankey/route/opacity/.code = \__sankey_rset:nn { ropac } { \fp_eval:n {#1} },
+      /sankey/route/fade/.code = { \__sankey_choice:Nnnn \l__sankey_item_tl { fade } {#1} { none, in, out, both }
+         \__sankey_rset:nn { rfade } {#1} },
+      /sankey/route/radius/.code = \__sankey_rset:nn { rrad } { \dim_to_fp:n {#1} },
+      /sankey/route/style/.code = \__sankey_rset:nn { rstyle } { \exp_not:e { \__sankey_r:n { rstyle } } , \exp_not:n {#1} },
+      /sankey/route/bar~style/.code = \__sankey_rset:nn { rbarstyle } { \exp_not:e { \__sankey_r:n { rbarstyle } } , \exp_not:n {#1} },
+      /sankey/route~radius/.code = \fp_set:Nn \l__sankey_rrad_fp { \dim_to_fp:n {#1} },
+   }
+% inside the environment, routes wait until the columns are drawn, so they can start at their nodes
+\cs_new_protected:Npn \__sankey_defer:n #1
+   { \bool_if:NTF \g__sankey_active_bool { \tl_gput_right:Nn \g__sankey_routes_tl {#1} } {#1} }
+\cs_generate_variant:Nn \__sankey_defer:n { e }
+
+% Data from files: CSV, and the sankey diagrams of Mermaid
+\msg_new:nnn { tikz-sankey } { csv-row } { Line ~ #1 ~ of ~ `#2' ~ has ~ fewer ~ than ~ three ~ fields, ~ or ~ no ~ number ~ as ~ its ~ value; ~ it ~ is ~ skipped. }
+\msg_new:nnn { tikz-sankey } { no-siunitx } { The ~ key ~ `siunitx' ~ needs ~ the ~ siunitx ~ package. }
+\ior_new:N \g__sankey_ior
+\seq_new:N \l__sankey_fields_seq
+\seq_new:N \l__sankey_lines_seq
+\tl_new:N \l__sankey_field_tl
+\bool_new:N \l__sankey_quote_bool
+\bool_new:N \l__sankey_header_bool
+\int_new:N \l__sankey_line_int
+\tl_new:N \l__sankey_csvsep_tl
+\tl_new:N \l__sankey_csvheader_tl
+\clist_new:N \l__sankey_csvcols_clist
+\tl_new:N \l__sankey_source_tl
+\tl_set:Nn \l__sankey_csvsep_tl { , }
+\tl_set:Nn \l__sankey_csvheader_tl { auto }
+\clist_set:Nn \l__sankey_csvcols_clist { from, to, value, group }
+% the fields of one line of CSV: separated by `csv separator', a field in double quotes may
+% hold the separator, and two double quotes in it stand for one
+\cs_new_protected:Npn \__sankey_csv_fields:n #1
+   {
+      \seq_clear:N \l__sankey_fields_seq
+      \tl_clear:N \l__sankey_field_tl
+      \bool_set_false:N \l__sankey_quote_bool
+      \tl_set:Ne \l__sankey_a_tl { \tl_to_str:V \l__sankey_csvsep_tl }
+      \str_map_inline:nn {#1}
+         {
+            \str_if_eq:nnTF {##1} { " }
+               {
+                  \bool_if:NTF \l__sankey_quote_bool
+                     { \bool_set_false:N \l__sankey_quote_bool \tl_set:Nn \l__sankey_b_tl { closed } }
+                     {
+                        \str_if_eq:VnT \l__sankey_b_tl { closed } { \tl_put_right:Nn \l__sankey_field_tl { " } }
+                        \bool_set_true:N \l__sankey_quote_bool
+                     }
+               }
+               {
+                  \tl_clear:N \l__sankey_b_tl
+                  \bool_lazy_and:nnTF { ! \l__sankey_quote_bool } { \str_if_eq_p:eV {##1} \l__sankey_a_tl }
+                     {
+                        \seq_put_right:Ne \l__sankey_fields_seq { \tl_trim_spaces:V \l__sankey_field_tl }
+                        \tl_clear:N \l__sankey_field_tl
+                     }
+                     { \tl_put_right:Nn \l__sankey_field_tl {##1} }
+               }
+         }
+      \seq_put_right:Ne \l__sankey_fields_seq { \tl_trim_spaces:V \l__sankey_field_tl }
+   }
+\cs_generate_variant:Nn \tl_trim_spaces:n { V }
+\prg_generate_conditional_variant:Nnn \str_if_eq:nn { eV } { p }
+% one field by its role (from, to, value, group, color), or nothing
+\cs_new:Npn \__sankey_field:n #1
+   {
+      \__sankey_field_aux:nn {#1} { 0 }
+   }
+\cs_new:Npn \__sankey_field_aux:nn #1#2
+   {
+      \int_compare:nNnTF {#2} < { \clist_count:N \l__sankey_csvcols_clist }
+         {
+            \str_if_eq:eeTF { \clist_item:Nn \l__sankey_csvcols_clist { #2 + 1 } } {#1}
+               { \seq_item:Nn \l__sankey_fields_seq { #2 + 1 } }
+               { \exp_args:Nne \__sankey_field_aux:nn {#1} { \int_eval:n { #2 + 1 } } }
+         }
+         { }
+   }
+\cs_new_protected:Npn \__sankey_csv_row:nn #1#2 % line, keys for every flow
+   {
+      \__sankey_csv_fields:n {#1}
+      \bool_if:NTF \l__sankey_header_bool
+         { \bool_set_false:N \l__sankey_header_bool }
+         {
+            \bool_set_false:N \l__sankey_ok_bool
+            \int_compare:nNnF { \seq_count:N \l__sankey_fields_seq } < { 3 }
+               {
+                  \regex_match:neT { \A [+\-]? ( \d+ \.? \d* | \. \d+ ) ( [eE] [+\-]? \d+ )? \Z } { \__sankey_field:n { value } }
+                     { \bool_set_true:N \l__sankey_ok_bool }
+               }
+            \bool_if:nTF { ! \l__sankey_ok_bool }
+               { \msg_warning:nnVV { tikz-sankey } { csv-row } \l__sankey_line_int \l__sankey_source_tl }
+               {
+                  \__sankey_flow:eene { \__sankey_field:n { from } } { \__sankey_field:n { to } } { \__sankey_field:n { value } }
+                     {
+                        \exp_not:n {#2} ,
+                        \tl_if_blank:eF { \__sankey_field:n { group } } { group = { \__sankey_field:n { group } } , }
+                        \tl_if_blank:eF { \__sankey_field:n { color } } { color = { \__sankey_field:n { color } } , }
+                     }
+               }
+         }
+   }
+\cs_generate_variant:Nn \__sankey_flow:nnnn { eenn , eene }
+\cs_generate_variant:Nn \msg_warning:nnnn { nnVV }
+% decides about a header line: `auto' takes the first line for one if its value is no number
+\cs_new_protected:Npn \__sankey_csv_header:n #1
+   {
+      \str_case:VnF \l__sankey_csvheader_tl
+         {
+            { true } { \bool_set_true:N \l__sankey_header_bool }
+            { false } { \bool_set_false:N \l__sankey_header_bool }
+         }
+         {
+            \__sankey_csv_fields:n {#1}
+            \regex_match:neTF { \A [+\-]? ( \d+ \.? \d* | \. \d+ ) ( [eE] [+\-]? \d+ )? \Z } { \__sankey_field:n { value } }
+               { \bool_set_false:N \l__sankey_header_bool } { \bool_set_true:N \l__sankey_header_bool }
+         }
+   }
+\cs_generate_variant:Nn \regex_match:nnTF { ne }
+\cs_generate_variant:Nn \regex_match:nnT { ne }
+% the lines of a file, without empty ones
+\cs_new_protected:Npn \__sankey_read_lines:n #1
+   {
+      \seq_clear:N \l__sankey_lines_seq
+      \ior_open:Nn \g__sankey_ior {#1}
+      \ior_str_map_inline:Nn \g__sankey_ior { \tl_if_blank:nF {##1} { \seq_put_right:Nn \l__sankey_lines_seq {##1} } }
+      \ior_close:N \g__sankey_ior
+   }
+\cs_new_protected:Npn \__sankey_csv:nn #1#2 % file, keys
+   {
+      \tl_set:Nn \l__sankey_source_tl {#1}
+      \__sankey_read_lines:n {#1}
+      \int_zero:N \l__sankey_line_int
+      \seq_if_empty:NF \l__sankey_lines_seq { \exp_args:Ne \__sankey_csv_header:n { \seq_item:Nn \l__sankey_lines_seq { 1 } } }
+      \seq_map_inline:Nn \l__sankey_lines_seq { \int_incr:N \l__sankey_line_int \__sankey_csv_row:nn {##1} {#2} }
+   }
+\pgfkeys
+   {
+      /sankey/csv~separator/.code = \tl_set:Nn \l__sankey_csvsep_tl {#1},
+      /sankey/csv~header/.code = \__sankey_choice:Nnnn \l__sankey_csvheader_tl { csv~header } {#1} { auto, true, false },
+      /sankey/csv~columns/.code = \clist_set:Nn \l__sankey_csvcols_clist {#1},
+      % how numbers look
+      /sankey/siunitx/.code =
+         {
+            \cs_if_exist:NTF \num
+               { \pgfqkeys { /sankey } { number~format = { \num [ mode = text , reset-text-family = false , reset-text-series = false , reset-text-shape = false ] {##1} } , percent~format = { \qty [ mode = text , reset-text-family = false , reset-text-series = false , reset-text-shape = false ] {##1} { \percent } } } }
+               { \msg_error:nn { tikz-sankey } { no-siunitx } }
+         },
+      /sankey/value~prefix/.code = \tl_set:Nn \l__sankey_vprefix_tl {#1},
+      /sankey/value~suffix/.code = \tl_set:Nn \l__sankey_vsuffix_tl {#1},
+      /sankey/value~unit/.code = \tl_set:Nn \l__sankey_vsuffix_tl { \, #1 },
+   }
+\tl_new:N \l__sankey_vprefix_tl
+\tl_new:N \l__sankey_vsuffix_tl
+
+% Mermaid: `sankey-beta' (or `sankey'), then lines of CSV `source,target,value'. A front
+% matter between two lines `---' may set showValues, linkColor, nodeAlignment, prefix, suffix.
+\bool_new:N \l__sankey_front_bool
+\cs_new_protected:Npn \__sankey_mermaid:nn #1#2 % keys of the picture, the lines as a sequence in \l__sankey_lines_seq
+   {
+      \bool_set_false:N \l__sankey_front_bool
+      \tl_clear:N \l__sankey_opts_tl
+      \seq_set_eq:NN \l__sankey_tmp_seq \l__sankey_lines_seq
+      \seq_clear:N \l__sankey_lines_seq
+      \seq_map_inline:Nn \l__sankey_tmp_seq
+         {
+            \tl_set:Ne \l__sankey_item_tl { \tl_to_str:n {##1} }
+            \regex_replace_all:nnN { \A \s+ | \s+ \Z } { } \l__sankey_item_tl
+            \bool_if:NTF \l__sankey_front_bool
+               {
+                  \str_if_eq:VnTF \l__sankey_item_tl { --- }
+                     { \bool_set_false:N \l__sankey_front_bool }
+                     { \__sankey_mermaid_config:V \l__sankey_item_tl }
+               }
+               {
+                  \str_case:VnF \l__sankey_item_tl
+                     {
+                        { --- } { \bool_set_true:N \l__sankey_front_bool }
+                        { sankey-beta } { }
+                        { sankey } { }
+                     }
+                     {
+                        \regex_match:nVF { \A \%\% } \l__sankey_item_tl
+                           { \seq_put_right:NV \l__sankey_lines_seq \l__sankey_item_tl }
+                     }
+               }
+         }
+      \tl_set:Nn \l__sankey_csvheader_tl { false }
+      \clist_set:Nn \l__sankey_csvcols_clist { from, to, value }
+      \tl_set:Nn \l__sankey_csvsep_tl { , }
+      \tl_set:Nn \l__sankey_source_tl { mermaid }
+      \bool_set_false:N \l__sankey_header_bool
+      \bool_if:NTF \g__sankey_active_bool
+         { \__sankey_mermaid_flows: }
+         {
+            \use:e { \exp_not:N \begin{sankeypicture} [ mermaid , \exp_not:V \l__sankey_opts_tl , \exp_not:n {#1} ] }
+               \__sankey_mermaid_flows:
+            \end{sankeypicture}
+         }
+   }
+\cs_generate_variant:Nn \regex_match:nnF { nV }
+\cs_generate_variant:Nn \regex_match:nnT { nV }
+\cs_new_protected:Npn \__sankey_mermaid_flows:
+   {
+      \int_zero:N \l__sankey_line_int
+      \seq_map_inline:Nn \l__sankey_lines_seq { \int_incr:N \l__sankey_line_int \__sankey_csv_row:nn {##1} { } }
+   }
+% `key: value' of the front matter, as far as it means something here
+\cs_new_protected:Npn \__sankey_mermaid_config:n #1
+   {
+      \regex_extract_once:nnNT { \A \s* ([A-Za-z]+) \s* : \s* "? ([^"]*?) "? \s* \Z } {#1} \l__sankey_path_seq
+         {
+            \tl_set:Ne \l__sankey_a_tl { \seq_item:Nn \l__sankey_path_seq { 3 } }
+            % spaces at the ends (as in `suffix: " kg"') would be lost to pgfkeys: they become ties
+            \regex_replace_all:nnN { \A \s | \s \Z } { \~ } \l__sankey_a_tl
+            % back to the catcodes of a document, so that `source' is a mode and not a color
+            \exp_args:NNnV \tl_set_rescan:Nnn \l__sankey_a_tl { } \l__sankey_a_tl
+            \str_case:enT { \seq_item:Nn \l__sankey_path_seq { 2 } }
+               {
+                  { showValues } { \tl_put_right:Ne \l__sankey_opts_tl { , show~values = \l__sankey_a_tl } }
+                  { linkColor } { \tl_put_right:Ne \l__sankey_opts_tl { , flow~color = \l__sankey_a_tl } }
+                  { nodeAlignment } { \tl_put_right:Ne \l__sankey_opts_tl { , layout = \l__sankey_a_tl } }
+                  { prefix } { \tl_put_right:Ne \l__sankey_opts_tl { , value~prefix = { \l__sankey_a_tl } } }
+                  { suffix } { \tl_put_right:Ne \l__sankey_opts_tl { , value~suffix = { \l__sankey_a_tl } } }
+               }
+               { }
+         }
+   }
+\cs_generate_variant:Nn \__sankey_mermaid_config:n { V }
+\cs_generate_variant:Nn \str_case:nnT { en }
+\pgfkeys
+   {
+      /sankey/show~values/.code =
+         {
+            \str_if_eq:nnTF {#1} { false }
+               { \pgfqkeys { /sankey } { label = \sankeyName } }
+               { \pgfqkeys { /sankey } { label = { \sankeyName \\ \sankeyValue } } }
+         },
+      /sankey/show~values/.default = true,
+   }
+% the environment reads its lines as they are: Mermaid needs the ends of the lines
+\cs_new_protected:Npn \__sankey_mermaid_env:n #1
+   {
+      \group_begin:
+      \tl_set:Nn \l__sankey_opts_tl {#1}
+      \cs_set_eq:NN \do \char_set_catcode_other:N
+      \dospecials
+      \char_set_catcode_other:N \^^M
+      \__sankey_mermaid_grab:w
+   }
+\use:e
+   {
+      \cs_new_protected:Npn \exp_not:N \__sankey_mermaid_grab:w \exp_not:n { #1 }
+         \c_backslash_str end \c_left_brace_str sankeymermaid \c_right_brace_str
+   }
+   {
+      \tl_set:Nn \l__sankey_item_tl {#1}
+      \seq_set_split:NeV \l__sankey_lines_seq { \char_generate:nn { 13 } { 12 } } \l__sankey_item_tl
+      \seq_remove_all:Nn \l__sankey_lines_seq { }
+      \use:e
+         {
+            \group_end:
+            \__sankey_mermaid_lines:nn { \exp_not:V \l__sankey_opts_tl }
+               { \seq_use:Nn \l__sankey_lines_seq { \q_mark } }
+         }
+   }
+\cs_generate_variant:Nn \seq_set_split:Nnn { NeV , Nen }
+% the lines survive the end of the group as one token list, split at \q_mark
+\cs_new_protected:Npn \__sankey_mermaid_lines:nn #1#2
+   {
+      \seq_set_split:Nnn \l__sankey_lines_seq { \q_mark } {#2}
+      \__sankey_mermaid:nn {#1} { }
+      \end{sankeymermaid}
+   }
+
+
+% Bucket diagrams: each column is a bar of buckets, and a flow runs from a bucket to a bucket,
+% `import@4 -> model@2'; a flow within one column is a loop beside it
+\seq_new:N \g__sankey_bcols_seq
+\tl_new:N \l__sankey_bvalue_tl
+\tl_new:N \l__sankey_bfill_tl
+\int_new:N \l__sankey_bcount_int
+\fp_new:N \l__sankey_loop_fp
+\fp_new:N \l__sankey_bh_fp
+\bool_new:N \l__sankey_buckets_bool
+\msg_new:nnn { tikz-sankey } { bucket-name }
+   { `#1' ~ names ~ no ~ bucket: ~ write ~ <column>@<number>, ~ as ~ in ~ import@4. }
+\msg_new:nnn { tikz-sankey } { bucket-range }
+   { Column ~ `#1' ~ has ~ #3 ~ buckets, ~ so ~ there ~ is ~ no ~ bucket ~ #2. }
+\pgfkeys
+   {
+      /sankey/buckets/.code = \__sankey_bool:Nn \l__sankey_buckets_bool {#1},
+      /sankey/buckets/.default = true,
+      /sankey/bucket~count/.code = \int_set:Nn \l__sankey_bcount_int {#1},
+      /sankey/bucket~value/.code = \tl_set:Nn \l__sankey_bvalue_tl {#1},
+      /sankey/bucket~fill/.code = \tl_set:Nn \l__sankey_bfill_tl {#1},
+      /sankey/loop~size/.code = \fp_set:Nn \l__sankey_loop_fp { \dim_to_fp:n {#1} },
+      /sankey/column/.is~family,
+      /sankey/column/buckets/.code = \__sankey_set:nVe { bn } \l__sankey_name_tl { \int_eval:n {#1} },
+      /sankey/column/label/.code = \__sankey_set:nVn { blabel } \l__sankey_name_tl {#1},
+      /sankey/column/color/.code = \__sankey_set:nVe { bcolor } \l__sankey_name_tl {#1},
+   }
+\cs_new_protected:Npn \__sankey_bcolumn:nn #1#2 % name, keys
+   {
+      \tl_set:Ne \l__sankey_name_tl { \tl_trim_spaces:e { \tl_to_str:e {#1} } }
+      \seq_if_in:NVF \g__sankey_bcols_seq \l__sankey_name_tl
+         {
+            \seq_gput_right:NV \g__sankey_bcols_seq \l__sankey_name_tl
+            \__sankey_set:nVe { bidx } \l__sankey_name_tl { \int_eval:n { \seq_count:N \g__sankey_bcols_seq - 1 } }
+         }
+      \pgfqkeys { /sankey/column } {#2}
+   }
+\cs_generate_variant:Nn \__sankey_bcolumn:nn { Vn }
+% which column and bucket a node is
+\cs_new_protected:Npn \__sankey_bucket_node:n #1
+   {
+      \tl_set:Nn \l__sankey_a_tl {#1}
+      \regex_extract_once:nVNTF { \A (.*) @ (\d+) \Z } \l__sankey_a_tl \l__sankey_fields_seq
+         {
+            \tl_set:Ne \l__sankey_b_tl { \seq_item:Nn \l__sankey_fields_seq { 2 } }
+            \seq_if_in:NVF \g__sankey_bcols_seq \l__sankey_b_tl { \__sankey_bcolumn:Vn \l__sankey_b_tl { } }
+            \__sankey_set:nnV { bcol } {#1} \l__sankey_b_tl
+            \__sankey_set:nne { bk } {#1} { \seq_item:Nn \l__sankey_fields_seq { 3 } }
+            \__sankey_set:nne { c } {#1} { \__sankey_get:nV { bidx } \l__sankey_b_tl }
+            \int_compare:nNnT { \__sankey_get:nn { bk } {#1} } > { \__sankey_buckets_of:V \l__sankey_b_tl }
+               { \msg_error:nneee { tikz-sankey } { bucket-range } { \l__sankey_b_tl } { \__sankey_get:nn { bk } {#1} } { \__sankey_buckets_of:V \l__sankey_b_tl } }
+         }
+         {
+            \msg_error:nnn { tikz-sankey } { bucket-name } {#1}
+            \__sankey_set:nnn { bbad } {#1} { 1 }
+         }
+   }
+\cs_new:Npn \__sankey_buckets_of:n #1 { \__sankey_get_or:nnn { bn } {#1} { \int_use:N \l__sankey_bcount_int } }
+\cs_generate_variant:Nn \__sankey_buckets_of:n { V , e }
+\cs_new_protected:Npn \__sankey_bucket_finish:
+   {
+      \fp_gset_eq:NN \g__sankey_width_fp \l__sankey_width_fp
+      \seq_map_function:NN \g__sankey_nodes_seq \__sankey_bucket_node:n
+      % a node that names no bucket is dropped, with its flows
+      \seq_set_filter:NNn \l__sankey_tmp_seq \g__sankey_nodes_seq { ! \__sankey_has_p:nn { bbad } {##1} }
+      \seq_gset_eq:NN \g__sankey_nodes_seq \l__sankey_tmp_seq
+      \seq_set_filter:NNn \l__sankey_tmp_seq \g__sankey_flows_seq
+         {
+            ! \__sankey_has_p:ne { bbad } { \__sankey_get:nn { ffrom } {##1} }
+            && ! \__sankey_has_p:ne { bbad } { \__sankey_get:nn { fto } {##1} }
+         }
+      \seq_gset_eq:NN \g__sankey_flows_seq \l__sankey_tmp_seq
+      % values and the flows to draw
+      \seq_map_inline:Nn \g__sankey_nodes_seq { \__sankey_set:nnn { in } {##1} { 0 } \__sankey_set:nnn { out } {##1} { 0 } }
+      \seq_clear:N \l__sankey_drawn_seq
+      \seq_map_inline:Nn \g__sankey_flows_seq
+         {
+            \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn { ffrom } {##1} }
+            \tl_set:Ne \l__sankey_b_tl { \__sankey_get:nn { fto } {##1} }
+            \__sankey_set:nne { fgi } {##1}
+               { \__sankey_has:neTF { fgroup } {##1} { \__sankey_get:ne { gidx } { \__sankey_get:nn { fgroup } {##1} } } { 0 } }
+            \str_if_eq:eeT { \__sankey_get:nV { bcol } \l__sankey_a_tl } { \__sankey_get:nV { bcol } \l__sankey_b_tl }
+               { \__sankey_set:nnn { floop } {##1} { 1 } }
+            \__sankey_has:nnF { floop } {##1}
+               {
+                  \__sankey_set:nVn { nlout } \l__sankey_a_tl { 1 }
+                  \__sankey_set:nVn { nlin } \l__sankey_b_tl { 1 }
+               }
+            \fp_compare:nNnT { \__sankey_get:nn { fval } {##1} } > { 0 }
+               {
+                  \seq_put_right:Nn \l__sankey_drawn_seq {##1}
+                  \__sankey_set:nVe { out } \l__sankey_a_tl
+                     { \fp_eval:n { \__sankey_get:nV { out } \l__sankey_a_tl + \__sankey_get:nn { fval } {##1} } }
+                  \__sankey_set:nVe { in } \l__sankey_b_tl
+                     { \fp_eval:n { \__sankey_get:nV { in } \l__sankey_b_tl + \__sankey_get:nn { fval } {##1} } }
+               }
+         }
+      \fp_zero:N \l__sankey_val_fp
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \__sankey_set:nne { v } {##1} { \fp_eval:n { max ( \__sankey_get:nn { in } {##1} , \__sankey_get:nn { out } {##1} ) } }
+            \fp_set:Nn \l__sankey_val_fp { max ( \l__sankey_val_fp , \__sankey_get:nn { v } {##1} ) }
+         }
+      \tl_if_blank:VF \l__sankey_bvalue_tl { \fp_set:Nn \l__sankey_val_fp { \l__sankey_bvalue_tl } }
+      \fp_compare:nNnT \l__sankey_val_fp = { 0 } { \fp_set:Nn \l__sankey_val_fp { 1 } }
+      % columns: where they start, how tall their buckets are, their colors
+      \int_set:Nn \l__sankey_maxcol_int { \int_max:nn { 0 } { \seq_count:N \g__sankey_bcols_seq - 1 } }
+      \clist_clear:N \l__sankey_colsat_clist
+      \bool_lazy_or:nnTF { \tl_if_blank_p:V \l__sankey_totalwidth_tl } { \int_compare_p:nNn { \l__sankey_maxcol_int } = { 0 } }
+         { \bool_if:NT \l__sankey_autosep_bool { \fp_set_eq:NN \l__sankey_colsep_fp \l__sankey_mincolsep_fp } }
+         {
+            \fp_set:Nn \l__sankey_colsep_fp
+               { ( \dim_to_fp:n { \l__sankey_totalwidth_tl } - \l__sankey_width_fp - \l__sankey_loop_fp ) / \l__sankey_maxcol_int }
+         }
+      \fp_set:Nn \l__sankey_unit_fp { inf }
+      \seq_map_inline:Nn \g__sankey_bcols_seq
+         {
+            \__sankey_set:nne { bcolor } {##1}
+               { \__sankey_get_or:nnn { bcolor } {##1} { \__sankey_palette:Nn \l__sankey_palette_clist { \__sankey_get:nn { bidx } {##1} + 1 } } }
+            \fp_set:Nn \l__sankey_unit_fp
+               { min ( \l__sankey_unit_fp , \l__sankey_height_fp / \__sankey_buckets_of:n {##1} / \l__sankey_val_fp ) }
+         }
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         {
+            \tl_set:Ne \l__sankey_b_tl { \__sankey_get:nn { bcol } {##1} }
+            \fp_set:Nn \l__sankey_bh_fp { \l__sankey_height_fp / \__sankey_buckets_of:V \l__sankey_b_tl }
+            \__sankey_set:nne { cu } {##1} { \fp_eval:n { \__sankey_colu:n { \__sankey_get:nn { c } {##1} } } }
+            \__sankey_set:nne { st } {##1} { \fp_eval:n { ( \__sankey_get:nn { bk } {##1} - 1 ) * \l__sankey_bh_fp } }
+            \__sankey_set:nne { h } {##1} { \fp_use:N \l__sankey_bh_fp }
+            \__sankey_set:nne { rc } {##1} { \__sankey_get_or:nnn { color } {##1} { \__sankey_get:nV { bcolor } \l__sankey_b_tl } }
+            \__sankey_set:nnn { vis } {##1} { 1 }
+            \__sankey_set:nne { outcur } {##1} { \__sankey_port:nn {##1} { out } }
+            \__sankey_set:nne { incur } {##1} { \__sankey_port:nn {##1} { in } }
+         }
+      % ports: every flow leaves on the right; a loop also comes back on the right
+      \seq_set_eq:NN \l__sankey_tmp_seq \l__sankey_drawn_seq
+      \__sankey_sort_flows:Nn \l__sankey_tmp_seq { fto }
+      \seq_map_inline:Nn \l__sankey_tmp_seq { \__sankey_assign:nnnn {##1} { ffrom } { outcur } { fsa } }
+      \seq_set_eq:NN \l__sankey_tmp_seq \l__sankey_drawn_seq
+      \__sankey_sort_flows:Nn \l__sankey_tmp_seq { ffrom }
+      \seq_map_inline:Nn \l__sankey_tmp_seq
+         {
+            \__sankey_has:nnTF { floop } {##1}
+               { \__sankey_assign:nnnn {##1} { fto } { outcur } { fsb } }
+               { \__sankey_assign:nnnn {##1} { fto } { incur } { fsb } }
+         }
+      % draw: the lines between the buckets, the ends of the flows in them, the flows, and the
+      % outlines of the bars over all of it
+      \seq_map_function:NN \g__sankey_bcols_seq \__sankey_draw_blines:n
+      \tl_if_eq:VnF \l__sankey_bfill_tl { none }
+         { \seq_map_function:NN \l__sankey_drawn_seq \__sankey_bucket_marks:n }
+      \seq_map_function:NN \l__sankey_drawn_seq \__sankey_draw_flow:n
+      \sankey@drawedges
+      \seq_map_function:NN \g__sankey_bcols_seq \__sankey_draw_bcolumn:n
+      \__sankey_draw_legend:
+   }
+% where a flow sits in its buckets: a mark as tall as the flow, across the bar (neighbouring
+% marks are kept apart by the lines of `every bucket mark')
+\cs_new_protected:Npn \__sankey_bucket_marks:n #1
+   {
+      \__sankey_bucket_mark:een { \__sankey_get:nn { ffrom } {#1} } { \__sankey_get:nn { fsa } {#1} } {#1}
+      \__sankey_bucket_mark:een { \__sankey_get:nn { fto } {#1} } { \__sankey_get:nn { fsb } {#1} } {#1}
+   }
+\cs_new_protected:Npn \__sankey_bucket_mark:nnn #1#2#3 % node, s, flow
+   {
+      \group_begin:
+      \tl_set:Ne \l__sankey_item_tl { \__sankey_get:nn { rc } {#1} }
+      \colorlet { sankey@node } { \l__sankey_item_tl }
+      \use:e
+         {
+            \exp_not:N \sankey@poly
+               {
+                  fill = sankey@node ! \l__sankey_bfill_tl ,
+                  \str_case:VnF \l__sankey_outline_tl
+                     { { none } { draw = white , line~width = .5pt , } { auto } { draw = sankey@node ! 65 ! black , line~width = .25pt , } }
+                     { draw = \l__sankey_outline_tl , line~width = .25pt , }
+                  /sankey/every~bucket~mark
+               }
+               {
+                  \__sankey_point:nn { \__sankey_get:nn { cu } {#1} } {#2} --
+                  \__sankey_point:nn { \__sankey_get:nn { cu } {#1} + \l__sankey_width_fp } {#2} --
+                  \__sankey_point:nn { \__sankey_get:nn { cu } {#1} + \l__sankey_width_fp } { #2 + \__sankey_get:nn { fval } {#3} * \l__sankey_unit_fp } --
+                  \__sankey_point:nn { \__sankey_get:nn { cu } {#1} } { #2 + \__sankey_get:nn { fval } {#3} * \l__sankey_unit_fp }
+               }
+         }
+      \group_end:
+   }
+\cs_generate_variant:Nn \__sankey_bucket_mark:nnn { een }
+% the lines between the buckets of a column
+\cs_new_protected:Npn \__sankey_draw_blines:n #1
+   {
+      \fp_set:Nn \l__sankey_s_fp { \__sankey_colu:n { \__sankey_get:nn { bidx } {#1} } }
+      \fp_set:Nn \l__sankey_bh_fp { \l__sankey_height_fp / \__sankey_buckets_of:n {#1} }
+      \int_step_inline:nn { \__sankey_buckets_of:n {#1} - 1 }
+         {
+            \use:e
+               {
+                  \exp_not:N \sankey@leaderstyled { /sankey/every~bucket~line }
+                     { \__sankey_point:nn { \l__sankey_s_fp } { ##1 * \l__sankey_bh_fp } }
+                     { \__sankey_point:nn { \l__sankey_s_fp + \l__sankey_width_fp } { ##1 * \l__sankey_bh_fp } }
+               }
+         }
+   }
+% the outline of a column, over everything else, and its label
+\cs_new_protected:Npn \__sankey_draw_bcolumn:n #1
+   {
+      \fp_set:Nn \l__sankey_s_fp { \__sankey_colu:n { \__sankey_get:nn { bidx } {#1} } }
+      \use:e
+         {
+            \exp_not:N \sankey@node
+               { \__sankey_point:nn { \l__sankey_s_fp + \l__sankey_width_fp / 2 } { \l__sankey_height_fp / 2 } }
+               { \fp_to_dim:n { \int_if_odd:nTF { \l__sankey_dir_int } { \l__sankey_height_fp } { \l__sankey_width_fp } } }
+               { \fp_to_dim:n { \int_if_odd:nTF { \l__sankey_dir_int } { \l__sankey_width_fp } { \l__sankey_height_fp } } }
+               { /sankey/every~column }
+               { \l__sankey_prefix_tl #1 }
+         }
+      \use:e
+         {
+            \exp_not:N \sankey@text
+               { \__sankey_point:nn { \l__sankey_s_fp + \l__sankey_width_fp / 2 } { \l__sankey_height_fp + \l__sankey_ldist_fp } }
+               { anchor = \int_if_odd:nTF { \l__sankey_dir_int } { west } { north } , /sankey/every~column~label }
+               { \exp_not:e { \__sankey_get_or:nnn { blabel } {#1} {#1} } }
+         }
+   }
+% a loop: out of the right side of a bucket, around, and back into the right side of another one
+\cs_new_protected:Npn \__sankey_loop:n #1
+   {
+      \fp_set:Nn \l__sankey_s_fp { \__sankey_get:nn { fval } {#1} * \l__sankey_unit_fp }
+      \int_compare:nNnTF
+         { \int_abs:n { \__sankey_get:nV { bk } \l__sankey_a_tl - \__sankey_get:nV { bk } \l__sankey_b_tl } } = { 1 }
+         { \__sankey_diagonal:n {#1} }
+         {
+            \tl_set:Ne \l__sankey_item_tl
+               {
+                  { \fp_eval:n { \__sankey_get:nV { cu } \l__sankey_a_tl + \l__sankey_width_fp } }
+                  { \__sankey_get:nn { fsa } {#1} }
+                  { \__sankey_get:nn { fsb } {#1} }
+               }
+            \exp_after:wN \__sankey_loop:nnn \l__sankey_item_tl
+         }
+   }
+% neighbouring buckets: a short band across the bar; across its right half only, if the
+% buckets have other flows as well
+\cs_new_protected:Npn \__sankey_diagonal:n #1
+   {
+      \fp_set:Nn \l__sankey_ox_fp
+         {
+            \__sankey_get:nV { cu } \l__sankey_a_tl +
+            \bool_lazy_or:nnTF { \__sankey_has_p:nV { nlout } \l__sankey_a_tl } { \__sankey_has_p:nV { nlin } \l__sankey_b_tl }
+               { \l__sankey_width_fp / 2 } { 0 }
+         }
+      \fp_set:Nn \l__sankey_oy_fp { \__sankey_get:nV { cu } \l__sankey_a_tl + \l__sankey_width_fp }
+      % flat, a slope, flat again: a short band of the shape of the other flows
+      \__sankey_ribbon:eeeee { \fp_use:N \l__sankey_ox_fp } { \fp_use:N \l__sankey_oy_fp }
+         { \__sankey_get:nn { fsa } {#1} } { \__sankey_get:nn { fsb } {#1} } { .5 }
+   }
+\cs_generate_variant:Nn \__sankey_ribbon:nnnnn { eeeee }
+\cs_generate_variant:Nn \__sankey_ribbon_seam:nnnnn { eennn }
+% the options of a paint command (\fill[...] or \shade[...]), for a path drawn otherwise
+\cs_new:Npn \__sankey_paint_options:w #1 [ #2 ] { #2 }
+\cs_new_protected:Npn \__sankey_loop:nnn #1#2#3 % u of the side, s of the start, s of the end
+   {
+      % the reach of the inner edge grows with the distance of the buckets, up to `loop size'
+      \fp_set:Nn \l__sankey_oy_fp { min ( \l__sankey_loop_fp , abs ( #3 - #2 ) / 4 ) }
+      \fp_set:Nn \l__sankey_ox_fp { \l__sankey_oy_fp + \l__sankey_s_fp * 1.33 } % of the outer one
+      \use:e
+         {
+            \exp_not:N \sankey@ribbon { \exp_not:V \l__sankey_paint_tl }
+            \fp_compare:nNnTF {#3} < {#2}
+               {
+                  { \__sankey_point:nn {#1} { #2 + \l__sankey_s_fp } }
+                  { \__sankey_point:nn { #1 + \l__sankey_ox_fp } { #2 + \l__sankey_s_fp } }
+                  { \__sankey_point:nn { #1 + \l__sankey_ox_fp } {#3} }
+                  { \__sankey_point:nn {#1} {#3} }
+                  { \__sankey_point:nn {#1} { #3 + \l__sankey_s_fp } }
+                  { \__sankey_point:nn { #1 + \l__sankey_oy_fp } { #3 + \l__sankey_s_fp } }
+                  { \__sankey_point:nn { #1 + \l__sankey_oy_fp } {#2} }
+                  { \__sankey_point:nn {#1} {#2} }
+               }
+               {
+                  { \__sankey_point:nn {#1} {#2} }
+                  { \__sankey_point:nn { #1 + \l__sankey_ox_fp } {#2} }
+                  { \__sankey_point:nn { #1 + \l__sankey_ox_fp } { #3 + \l__sankey_s_fp } }
+                  { \__sankey_point:nn {#1} { #3 + \l__sankey_s_fp } }
+                  { \__sankey_point:nn {#1} {#3} }
+                  { \__sankey_point:nn { #1 + \l__sankey_oy_fp } {#3} }
+                  { \__sankey_point:nn { #1 + \l__sankey_oy_fp } { #2 + \l__sankey_s_fp } }
+                  { \__sankey_point:nn {#1} { #2 + \l__sankey_s_fp } }
+               }
+         }
+   }
+
+% Long flows: a flow that skips columns gets a waypoint in each column it passes, an
+% invisible node that takes room there, so that the flow runs beside the nodes, not through them
+\tl_new:N \l__sankey_orig_tl
+\int_new:N \g__sankey_edge_int
+\tl_new:N \l__sankey_fadeval_tl
+\tl_new:N \l__sankey_longflows_tl
+\int_new:N \l__sankey_relax_int
+\cs_new_protected:Npn \__sankey_route_long:
+   {
+      \seq_clear:N \l__sankey_tmp_seq
+      \seq_map_inline:Nn \l__sankey_valid_seq
+         {
+            \int_compare:nNnTF
+               { \__sankey_get:ne { c } { \__sankey_get:nn { fto } {##1} } - \__sankey_get:ne { c } { \__sankey_get:nn { ffrom } {##1} } } > { 1 }
+               { \__sankey_split_flow:n {##1} }
+               { \seq_put_right:Nn \l__sankey_tmp_seq {##1} }
+         }
+      \seq_set_eq:NN \l__sankey_valid_seq \l__sankey_tmp_seq
+   }
+\cs_new_protected:Npn \__sankey_split_flow:n #1
+   {
+      \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn { ffrom } {#1} }
+      \tl_set:Ne \l__sankey_b_tl { \__sankey_get:nn { fto } {#1} }
+      \int_set:Nn \l__sankey_pass_int { \__sankey_get:nV { c } \l__sankey_b_tl - \__sankey_get:nV { c } \l__sankey_a_tl }
+      \__sankey_set:nne { fsegs } {#1} { \int_use:N \l__sankey_pass_int }
+      \tl_set_eq:NN \l__sankey_item_tl \l__sankey_a_tl
+      \int_step_inline:nn { \l__sankey_pass_int - 1 }
+         {
+            \tl_set:Ne \l__sankey_name_tl { sankey@way@#1@##1 }
+            \seq_gput_right:NV \g__sankey_nodes_seq \l__sankey_name_tl
+            \clist_map_inline:nn { in, out, v } { \__sankey_set:nVe {####1} \l__sankey_name_tl { \__sankey_get:nn { fval } {#1} } }
+            \__sankey_set:nVe { c } \l__sankey_name_tl { \int_eval:n { \__sankey_get:nV { c } \l__sankey_a_tl + ##1 } }
+            \__sankey_set:nVe { rc } \l__sankey_name_tl { \__sankey_get:nV { rc } \l__sankey_a_tl }
+            \clist_map_inline:nn { auto = 0 , vis = 1 , dummy = 1 , idx = 0 } { \__sankey_set_pair:Vw \l__sankey_name_tl ####1 \q_stop }
+            \__sankey_segment:nnnn {#1} { \int_eval:n { ##1 - 1 } } \l__sankey_item_tl \l__sankey_name_tl
+            \tl_set_eq:NN \l__sankey_item_tl \l__sankey_name_tl
+         }
+      \__sankey_segment:nnnn {#1} { \int_eval:n { \l__sankey_pass_int - 1 } } \l__sankey_item_tl \l__sankey_b_tl
+   }
+\cs_new_protected:Npn \__sankey_set_pair:nw #1#2 = #3 \q_stop { \__sankey_set:nnn { \tl_trim_spaces:n {#2} } {#1} { \tl_trim_spaces:n {#3} } }
+\cs_generate_variant:Nn \__sankey_set_pair:nw { V }
+% part #2 of flow #1, from node #3 to node #4 (token lists)
+\cs_new_protected:Npn \__sankey_segment:nnnn #1#2#3#4
+   {
+      \tl_set:Ne \l__sankey_flow_tl { #1 : #2 }
+      \seq_put_right:NV \l__sankey_tmp_seq \l__sankey_flow_tl
+      \__sankey_set:nVV { ffrom } \l__sankey_flow_tl #3
+      \__sankey_set:nVV { fto } \l__sankey_flow_tl #4
+      \__sankey_set:nVn { forig } \l__sankey_flow_tl {#1}
+      \__sankey_set:nVe { fseg } \l__sankey_flow_tl {#2}
+      \clist_map_inline:nn { fval, fgroup, fcolor, ftint, fopac, fstyle, fcurv, fgi }
+         { \__sankey_has:nnT {##1} {#1} { \__sankey_set:nVe {##1} \l__sankey_flow_tl { \__sankey_get:nn {##1} {#1} } } }
+      % a fade in belongs to the first part, a fade out to the last
+      \tl_set:Ne \l__sankey_fadeval_tl { \__sankey_get_or:nnn { ffade } {#1} { \l__sankey_fade_tl } }
+      \__sankey_set:nVe { ffade } \l__sankey_flow_tl
+         {
+            \str_case:VnF \l__sankey_fadeval_tl
+               {
+                  { in } { \int_compare:nNnTF {#2} = { 0 } { in } { none } }
+                  { out } { \int_compare:nNnTF {#2} = { \__sankey_get:nn { fsegs } {#1} - 1 } { out } { none } }
+                  { both }
+                     {
+                        \int_compare:nNnTF {#2} = { 0 } { in }
+                           { \int_compare:nNnTF {#2} = { \__sankey_get:nn { fsegs } {#1} - 1 } { out } { none } }
+                     }
+               }
+               { none }
+         }
+   }
+% the colors of a part: its stretch of the gradient of the whole flow
+\cs_new_protected:Npn \__sankey_segment_colors:n #1
+   {
+      \tl_set:Ne \l__sankey_item_tl
+         { sankey@to ! \fp_eval:n { round ( 100 * \__sankey_get:nn { fseg } {#1} / \__sankey_get:ne { fsegs } { \__sankey_get:nn { forig } {#1} } ) } ! sankey@from }
+      \colorlet { sankey@gfrom } { \l__sankey_item_tl }
+      \tl_set:Ne \l__sankey_item_tl
+         { sankey@to ! \fp_eval:n { round ( 100 * ( \__sankey_get:nn { fseg } {#1} + 1 ) / \__sankey_get:ne { fsegs } { \__sankey_get:nn { forig } {#1} } ) } ! sankey@from }
+      \colorlet { sankey@gto } { \l__sankey_item_tl }
+   }
+% the flow straight through a waypoint, in the color it has there
+\cs_new_protected:Npn \__sankey_through:n #1
+   {
+      \tl_if_in:NnTF \l__sankey_paint_tl { \shade }
+         { \tl_set:Nn \l__sankey_item_tl { sankey@to } } { \tl_set:Nn \l__sankey_item_tl { sankey@flow } }
+      \use:e
+         {
+            \exp_not:N \sankey@poly
+               {
+                  fill = \l__sankey_item_tl ! \l__sankey_text_tl ,
+                  opacity = \fp_eval:n { \__sankey_get_or:nnn { fopac } {#1} { \l__sankey_opacity_fp } } ,
+                  /sankey/every~flow \__sankey_get_or:nnn { fstyle } {#1} { }
+               }
+               {
+                  \__sankey_point:nn { \__sankey_get:nV { cu } \l__sankey_b_tl } { \__sankey_get:nn { fsb } {#1} } --
+                  \__sankey_point:nn { \__sankey_get:nV { cu } \l__sankey_b_tl + \l__sankey_width_fp } { \__sankey_get:nn { fsb } {#1} } --
+                  \__sankey_point:nn { \__sankey_get:nV { cu } \l__sankey_b_tl + \l__sankey_width_fp } { \__sankey_get:nn { fsb } {#1} + \__sankey_get:nn { fval } {#1} * \l__sankey_unit_fp } --
+                  \__sankey_point:nn { \__sankey_get:nV { cu } \l__sankey_b_tl } { \__sankey_get:nn { fsb } {#1} + \__sankey_get:nn { fval } {#1} * \l__sankey_unit_fp }
+               }
+         }
+   }
+% the long flows themselves report where their first and last parts meet their nodes
+\cs_new_protected:Npn \__sankey_long_ports:
+   {
+      \seq_map_inline:Nn \g__sankey_flows_seq
+         {
+            \__sankey_has:nnT { fsegs } {##1}
+               {
+                  \__sankey_set:nne { fsa } {##1} { \__sankey_get:nn { fsa } { ##1 : 0 } }
+                  \__sankey_set:nne { fsb } {##1} { \__sankey_get:ne { fsb } { ##1 : \int_eval:n { \__sankey_get:nn { fsegs } {##1} - 1 } } }
+               }
+         }
+   }
+
+% Relaxation: every node moves towards the weighted middle of the nodes it is linked with, from
+% the left and from the right in turn; then the nodes of its column are pushed apart again
+\cs_new_protected:Npn \__sankey_relax_layout:
+   {
+      \seq_map_inline:Nn \g__sankey_nodes_seq
+         { \seq_clear_new:c { l__sankey_in_##1_seq } \seq_clear_new:c { l__sankey_outs_##1_seq } }
+      \seq_map_inline:Nn \l__sankey_valid_seq
+         {
+            \seq_put_right:cn { l__sankey_in_ \__sankey_get:nn { fto } {##1} _seq } {##1}
+            \seq_put_right:cn { l__sankey_outs_ \__sankey_get:nn { ffrom } {##1} _seq } {##1}
+         }
+      \int_step_inline:nn { \l__sankey_relax_int }
+         {
+            \fp_set:Nn \l__sankey_s_fp { .8 ^ ##1 }
+            \int_step_inline:nn { \l__sankey_maxcol_int }
+               { \__sankey_relax_column:nnn {####1} { in } { ffrom } }
+            \int_step_inline:nnnn { \l__sankey_maxcol_int - 1 } { -1 } { 0 }
+               { \__sankey_relax_column:nnn {####1} { outs } { fto } }
+         }
+   }
+\cs_new_protected:Npn \__sankey_relax_column:nnn #1#2#3 % column, links, other end
+   {
+      \seq_map_inline:cn { g__sankey_col_#1_seq }
+         {
+            \fp_zero:N \l__sankey_val_fp
+            \fp_zero:N \l__sankey_cursor_fp
+            \seq_map_inline:cn { l__sankey_#2_##1_seq }
+               {
+                  \fp_add:Nn \l__sankey_val_fp { \__sankey_get:nn { fval } {####1} }
+                  \fp_add:Nn \l__sankey_cursor_fp
+                     {
+                        \__sankey_get:nn { fval } {####1} *
+                        ( \__sankey_get:ne { st } { \__sankey_get:nn {#3} {####1} } + \__sankey_get:ne { h } { \__sankey_get:nn {#3} {####1} } / 2 )
+                     }
+               }
+            \fp_compare:nNnT \l__sankey_val_fp > { 0 }
+               {
+                  \__sankey_set:nne { st } {##1}
+                     {
+                        \fp_eval:n
+                           {
+                              \__sankey_get:nn { st } {##1} + \l__sankey_s_fp *
+                              ( \l__sankey_cursor_fp / \l__sankey_val_fp - \__sankey_get:nn { st } {##1} - \__sankey_get:nn { h } {##1} / 2 )
+                           }
+                     }
+               }
+         }
+      \__sankey_resolve:n {#1}
+   }
+% the nodes of a column, in their order, without overlaps and within the height of the diagram
+\seq_new:N \l__sankey_ways_seq
+\seq_new:N \l__sankey_real_seq
+\cs_new_protected:Npn \__sankey_place_ways:n #1
+   {
+      \seq_set_filter:Ncn \l__sankey_ways_seq { g__sankey_col_#1_seq } { \__sankey_is_way_p:n {##1} }
+      \seq_if_empty:NF \l__sankey_ways_seq
+         {
+            \seq_set_filter:Ncn \l__sankey_real_seq { g__sankey_col_#1_seq } { \__sankey_is_real_p:n {##1} }
+            \seq_sort:Nn \l__sankey_ways_seq
+               {
+                  \fp_compare:nNnTF { \__sankey_mid:n {##1} } > { \__sankey_mid:n {##2} }
+                     { \sort_return_swapped: } { \sort_return_same: }
+               }
+            \seq_gclear:c { g__sankey_col_#1_seq }
+            \seq_map_inline:Nn \l__sankey_real_seq
+               {
+                  \bool_while_do:nn
+                     { \__sankey_way_before_p:n {##1} }
+                     {
+                        \seq_pop_left:NN \l__sankey_ways_seq \l__sankey_item_tl
+                        \seq_gput_right:cV { g__sankey_col_#1_seq } \l__sankey_item_tl
+                     }
+                  \seq_gput_right:cn { g__sankey_col_#1_seq } {##1}
+               }
+            \seq_map_inline:Nn \l__sankey_ways_seq { \seq_gput_right:cn { g__sankey_col_#1_seq } {##1} }
+         }
+   }
+\prg_new_conditional:Npnn \__sankey_way_before:n #1 { p }
+   {
+      \seq_if_empty:NTF \l__sankey_ways_seq { \prg_return_false: }
+         {
+            \fp_compare:nNnTF { \__sankey_mid:e { \seq_item:Nn \l__sankey_ways_seq { 1 } } } < { \__sankey_mid:n {#1} }
+               { \prg_return_true: } { \prg_return_false: }
+         }
+   }
+\cs_new:Npn \__sankey_mid:n #1 { \__sankey_get:nn { st } {#1} + \__sankey_get:nn { h } {#1} / 2 }
+\cs_generate_variant:Nn \__sankey_mid:n { e }
+\prg_new_conditional:Npnn \__sankey_is_way:n #1 { p } { \__sankey_has:nnTF { dummy } {#1} { \prg_return_true: } { \prg_return_false: } }
+\prg_new_conditional:Npnn \__sankey_is_real:n #1 { p } { \__sankey_has:nnTF { dummy } {#1} { \prg_return_false: } { \prg_return_true: } }
+\cs_generate_variant:Nn \seq_set_filter:NNn { Nc }
+\cs_new_protected:Npn \__sankey_resolve:n #1
+   {
+      \__sankey_place_ways:n {#1}
+      \__sankey_push_down:n {#1}
+      \fp_compare:nNnT { \l__sankey_bottom_fp } > { \l__sankey_maxext_fp + .001 }
+         {
+            % from the bottom up, then down again, so that the column never starts above 0
+            \tl_clear:N \l__sankey_prev_tl
+            \seq_set_eq:Nc \l__sankey_path_seq { g__sankey_col_#1_seq }
+            \seq_reverse:N \l__sankey_path_seq
+            \seq_map_inline:Nn \l__sankey_path_seq
+               {
+                  \fp_set:Nn \l__sankey_val_fp
+                     {
+                        \tl_if_empty:NTF \l__sankey_prev_tl { \l__sankey_maxext_fp - \__sankey_reach:n {##1} }
+                           { \__sankey_get:nV { st } \l__sankey_prev_tl - \__sankey_dist:nV {##1} \l__sankey_prev_tl }
+                     }
+                  \fp_compare:nNnT { \__sankey_get:nn { st } {##1} } > \l__sankey_val_fp
+                     { \__sankey_set:nne { st } {##1} { \fp_use:N \l__sankey_val_fp } }
+                  \tl_set:Nn \l__sankey_prev_tl {##1}
+               }
+            \__sankey_push_down:n {#1}
+         }
+   }
+% every node of the column below the one before it, as far as both need
+\cs_new_protected:Npn \__sankey_push_down:n #1
+   {
+      \tl_clear:N \l__sankey_prev_tl
+      \fp_zero:N \l__sankey_bottom_fp
+      \seq_map_inline:cn { g__sankey_col_#1_seq }
+         {
+            \fp_set:Nn \l__sankey_val_fp
+               {
+                  \tl_if_empty:NTF \l__sankey_prev_tl { \__sankey_first_top:n {##1} }
+                     { \__sankey_get:nV { st } \l__sankey_prev_tl + \__sankey_dist:Vn \l__sankey_prev_tl {##1} }
+               }
+            \fp_compare:nNnT { \__sankey_get:nn { st } {##1} } < \l__sankey_val_fp
+               { \__sankey_set:nne { st } {##1} { \fp_use:N \l__sankey_val_fp } }
+            \fp_set:Nn \l__sankey_bottom_fp { \__sankey_get:nn { st } {##1} + \__sankey_reach:n {##1} }
+            \tl_set:Nn \l__sankey_prev_tl {##1}
+         }
+   }
+
+% The whole diagram, at the end of the environment
+\fp_new:N \g__sankey_width_fp
+\cs_new_protected:Npn \__sankey_finish:
+   {
+      % `legend = auto': a legend of the groups, if there are any
+      \str_if_eq:VnT \l__sankey_legend_tl { auto }
+         {
+            \bool_lazy_and:nnTF { ! \seq_if_empty_p:N \g__sankey_groups_seq } { \str_if_eq_p:Vn \l__sankey_legendfor_tl { groups } }
+               { \tl_set:Nn \l__sankey_legend_tl { right } \bool_set_true:N \l__sankey_legendauto_bool }
+               { \tl_set:Nn \l__sankey_legend_tl { none } }
+         }
+      \bool_if:NTF \l__sankey_buckets_bool { \__sankey_bucket_finish: } { \__sankey_column_finish: }
+      \tl_use:N \g__sankey_routes_tl
+   }
+\cs_new_protected:Npn \__sankey_column_finish:
+   {
+      \__sankey_columns:
+      \__sankey_values:
+      \__sankey_colors:
+      \str_if_eq:VnT \l__sankey_longflows_tl { route } { \__sankey_route_long: }
+      \__sankey_build_columns:
+      \str_if_eq:VnT \l__sankey_nodecolor_tl { column } { \__sankey_column_colors: }
+      \__sankey_auto_width:
+      \fp_gset_eq:NN \g__sankey_width_fp \l__sankey_width_fp
+      % `width' spreads columns that run across the page; columns that run down use `column sep'
+      \bool_lazy_or:nnTF { \tl_if_blank_p:V \l__sankey_totalwidth_tl } { \int_if_odd_p:n { \l__sankey_dir_int } }
+         { \bool_if:NT \l__sankey_autosep_bool { \__sankey_auto_sep: } }
+         { \__sankey_fit_width: }
+      \__sankey_label_room:
+      \__sankey_unit:
+      \fp_compare:nNnTF \l__sankey_unit_fp = { inf }
+         { \tl_if_empty:NT \g__sankey_routes_tl { \msg_warning:nn { tikz-sankey } { empty } } }
+         {
+            \__sankey_stack:
+            \bool_lazy_and:nnT { \int_compare_p:nNn { \l__sankey_relax_int } > { 0 } } { \int_compare_p:nNn { \l__sankey_maxcol_int } > { 0 } }
+               { \__sankey_relax_layout: }
+            \__sankey_ports:
+            \__sankey_long_ports:
+            \seq_map_function:NN \l__sankey_drawn_seq \__sankey_draw_flow:n
+            \sankey@drawedges
+            \int_step_inline:nnn { 0 } { \l__sankey_maxcol_int }
+               { \seq_map_function:cN { g__sankey_col_##1_seq } \__sankey_draw_node:n }
+            \__sankey_draw_labels:
+            \__sankey_draw_titles:
+            \__sankey_draw_legend:
+         }
+   }
+
+% User commands
+\NewDocumentCommand \sankeySetup { m } { \pgfqkeys { /sankey } {#1} }
+\NewDocumentEnvironment { sankey } { O{} }
+   {
+      \bool_if:NT \g__sankey_active_bool { \msg_error:nn { tikz-sankey } { nested } }
+      \__sankey_clear:
+      \pgfqkeys { /sankey } {#1}
+      \bool_gset_true:N \g__sankey_active_bool
+   }
+   {
+      \__sankey_finish:
+      \bool_gset_false:N \g__sankey_active_bool
+   }
+\NewDocumentEnvironment { sankeypicture } { O{} }
+   { \begin{tikzpicture} [ /sankey/every~picture ] \begin{sankey} [#1] }
+   { \end{sankey} \end{tikzpicture} }
+\NewDocumentCommand \sankeyDiagram { O{} m }
+   { \begin{sankeypicture} [#1] \sankeyFlows {#2} \end{sankeypicture} }
+\NewDocumentCommand \sankeyNode { O{} m } { \__sankey_if_active:NT \sankeyNode { \__sankey_node:nn {#2} {#1} } }
+\NewDocumentCommand \sankeyNodes { O{} m }
+   {
+      \__sankey_if_active:NT \sankeyNodes
+         { \keyval_parse:nnn { \__sankey_node_one:nn {#1} } { \__sankey_node_two:nnn {#1} } {#2} }
+   }
+\cs_new_protected:Npn \__sankey_node_one:nn #1#2 { \__sankey_node:nn {#2} {#1} }
+\cs_new_protected:Npn \__sankey_node_two:nnn #1#2#3 { \__sankey_node:nn {#2} { #1 , text = {#3} } }
+\NewDocumentCommand \sankeyFlow { O{} m m m } { \__sankey_if_active:NT \sankeyFlow { \__sankey_flow:eenn {#2} {#3} {#4} {#1} } }
+\NewDocumentCommand \sankeyFlows { O{} m } { \__sankey_if_active:NT \sankeyFlows { \__sankey_parse_flows:nn {#1} {#2} } }
+\NewDocumentCommand \sankeyAlluvium { O{} m m } { \__sankey_if_active:NT \sankeyAlluvium { \__sankey_path:nnn {#2} {#3} {#1} } }
+\NewDocumentCommand \sankeyGroup { O{} m } { \__sankey_if_active:NT \sankeyGroup { \__sankey_group:nn {#1} {#2} } }
+\NewDocumentCommand \sankeyColumnTitle { O{} m m }
+   {
+      \__sankey_if_active:NT \sankeyColumnTitle
+         { \seq_gput_right:Ne \g__sankey_titles_seq { { \exp_not:n {#1} } { \int_eval:n {#2} } { \exp_not:n {#3} } } }
+   }
+\NewDocumentCommand \sankeyStart { O{} m m }
+   { \__sankey_defer:e { \exp_not:N \__sankey_start:nnn { \exp_not:n {#1} } {#2} { \fp_eval:n {#3} } } }
+\NewDocumentCommand \sankeyRoute { m m }
+   { \__sankey_defer:e { \exp_not:N \__sankey_route:nn {#1} { \exp_not:n {#2} } } }
+\NewDocumentCommand \sankeySplit { m m }
+   { \__sankey_defer:e { \exp_not:N \__sankey_split:nn {#1} { \exp_not:n {#2} } } }
+\NewDocumentCommand \sankeyMerge { m m }
+   { \__sankey_defer:e { \exp_not:N \__sankey_merge:nn {#1} {#2} } }
+\NewDocumentCommand \sankeyCSV { O{} m }
+   {
+      \bool_if:NTF \g__sankey_active_bool
+         { \group_begin: \pgfqkeys { /sankey } {#1} \__sankey_csv:nn {#2} { } \group_end: }
+         { \begin{sankeypicture} [#1] \__sankey_csv:nn {#2} { } \end{sankeypicture} }
+   }
+\NewDocumentCommand \sankeyMermaidFile { O{} m }
+   { \group_begin: \__sankey_read_lines:n {#2} \__sankey_mermaid:nn {#1} { } \group_end: }
+\NewDocumentCommand \sankeyMermaid { O{} +v }
+   {
+      \group_begin:
+      % a verbatim argument ends its lines with \obeyedline
+      \seq_set_split:Nnn \l__sankey_lines_seq { \obeyedline } {#2}
+      \seq_remove_all:Nn \l__sankey_lines_seq { }
+      \__sankey_mermaid:nn {#1} { }
+      \group_end:
+   }
+\NewDocumentEnvironment { sankeymermaid } { O{} } { \__sankey_mermaid_env:n {#1} } { }
+\NewDocumentCommand \sankeyColumn { O{} m } { \__sankey_if_active:NT \sankeyColumn { \__sankey_bcolumn:nn {#2} {#1} } }
+% inside labels: the node at hand
+\NewExpandableDocumentCommand \sankeyName { }
+   { \__sankey_get_or:nVn { text } \l__sankey_cur_tl { \__sankey_get_or:nVn { dtext } \l__sankey_cur_tl { \l__sankey_cur_tl } } }
+\NewDocumentCommand \sankeyValue { } { \exp_args:NV \sankeyValueOf \l__sankey_cur_tl }
+\NewDocumentCommand \sankeyPercentOf { m } { \sankeyPercent { \sankeyNodeInfo { \l__sankey_cur_tl } { value } } { \sankeyNodeInfo {#1} { value } } }
+\NewDocumentCommand \sankeyShare { o }
+   {
+      \sankeyPercent { \sankeyNodeInfo { \l__sankey_cur_tl } { value } }
+         { \sankeyColumnTotal { \IfValueTF {#1} {#1} { \sankeyNodeInfo { \l__sankey_cur_tl } { column } } } }
+   }
+% anywhere
+\NewExpandableDocumentCommand \sankeyColumnTotal { m } { \__sankey_get_or:nen { colsum } { \int_eval:n {#1} } { 0 } }
+\NewDocumentCommand \sankeyNumber { m }
+   { \l__sankey_vprefix_tl \__sankey_num_format:n { \fp_eval:n { round ( #1 , \l__sankey_prec_int ) } } \l__sankey_vsuffix_tl }
+\NewDocumentCommand \sankeyValueOf { m } { \sankeyNumber { \sankeyNodeInfo {#1} { value } } }
+\NewDocumentCommand \sankeyPercent { m m }
+   {
+      \fp_compare:nNnTF {#2} = { 0 } { -- }
+         { \__sankey_pct_format:n { \fp_eval:n { round ( 100 * ( #1 ) / ( #2 ) , \l__sankey_pprec_int ) } } }
+   }
+\NewExpandableDocumentCommand \sankeyNodeInfo { m m }
+   {
+      \str_case:nnF {#2}
+         {
+            { value } { \__sankey_get:ne { v } {#1} }
+            { in } { \__sankey_get:ne { in } {#1} }
+            { out } { \__sankey_get:ne { out } {#1} }
+            { column } { \__sankey_get:ne { c } {#1} }
+            { top } { \fp_to_dim:n { \__sankey_get:ne { st } {#1} } }
+            { bottom } { \fp_to_dim:n { \__sankey_get:ne { st } {#1} + \__sankey_get:ne { h } {#1} } }
+            { height } { \fp_to_dim:n { \__sankey_get:ne { h } {#1} } }
+            { start } { \fp_to_dim:n { \__sankey_get:ne { cu } {#1} } }
+            { end } { \fp_to_dim:n { \__sankey_get:ne { cu } {#1} + \g__sankey_width_fp } }
+            { color } { \__sankey_get:ne { rc } {#1} }
+         }
+         { \msg_expandable_error:nnn { tikz-sankey } { unknown-info } {#2} }
+   }
+\NewExpandableDocumentCommand \sankeyRouteInfo { m m }
+   {
+      \str_case:nnF {#2}
+         {
+            { x } { \fp_to_dim:n { \__sankey_get:ne { rx } {#1} } }
+            { y } { \fp_to_dim:n { \__sankey_get:ne { ry } {#1} } }
+            { angle } { \__sankey_get:ne { ra } {#1} }
+            { value } { \__sankey_get:ne { v } {#1} }
+         }
+         { \msg_expandable_error:nnn { tikz-sankey } { unknown-info } {#2} }
+   }
+% the flows, counted from 1 in the order they were declared
+\NewExpandableDocumentCommand \sankeyFlowInfo { m m }
+   {
+      \str_case:nnF {#2}
+         {
+            { from } { \__sankey_get:ne { ffrom } {#1} }
+            { to } { \__sankey_get:ne { fto } {#1} }
+            { value } { \__sankey_get:ne { fval } {#1} }
+            { group } { \__sankey_get_or:nen { fgroup } {#1} { } }
+            { start } { \fp_to_dim:n { \__sankey_get:ne { fsa } {#1} } }
+            { end } { \fp_to_dim:n { \__sankey_get:ne { fsb } {#1} } }
+         }
+         { \msg_expandable_error:nnn { tikz-sankey } { unknown-info } {#2} }
+   }
+\NewExpandableDocumentCommand \sankeyFlowCount { } { \int_use:N \g__sankey_flow_int }
+\NewExpandableDocumentCommand \sankeyGroupColor { m } { \__sankey_get:ne { grc } {#1} }
+% every key is defined now: the defaults
+\exp_args:NnV \pgfqkeys { /sankey } \c__sankey_defaults_tl
+\ExplSyntaxOff
+\endinput

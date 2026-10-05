@@ -1,0 +1,168 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% the default palette is used in the order of the declaration and cycles
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{n1 -> n2 : 1, n1 -> n3 : 1, n1 -> n4 : 1, n1 -> n5 : 1, n1 -> n6 : 1,
+     n1 -> n7 : 1, n1 -> n8 : 1, n1 -> n9 : 1}
+\end{sankey}
+\TestEq{n1}{\sankeyNodeInfo{n1}{color}}{sankey-1}
+\TestEq{n2}{\sankeyNodeInfo{n2}{color}}{sankey-2}
+\TestEq{n8}{\sankeyNodeInfo{n8}{color}}{sankey-8}
+\TestEq{n9 wraps}{\sankeyNodeInfo{n9}{color}}{sankey-1}
+\end{tikzpicture}
+% a custom palette
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[palette={red, green!50!black}]
+  \sankeyFlows{a -> b : 1, a -> c : 1}
+\end{sankey}
+\TestEq{pal a}{\sankeyNodeInfo{a}{color}}{red}
+\TestEq{pal b}{\sankeyNodeInfo{b}{color}}{green!50!black}
+\TestEq{pal c wraps}{\sankeyNodeInfo{c}{color}}{red}
+\end{tikzpicture}
+% a fixed node color, per node colors and node color
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node color=blue]
+  \sankeyNode[color=orange]{b}
+  \sankeyFlows{a -> b : 1, a -> c : 1}
+\end{sankey}
+\TestEq{fixed a}{\sankeyNodeInfo{a}{color}}{blue}
+\TestEq{own b}{\sankeyNodeInfo{b}{color}}{orange}
+\TestEq{fixed c}{\sankeyNodeInfo{c}{color}}{blue}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node colors={a=red, c=black!20}]
+  \sankeyFlows{a -> b : 1, a -> c : 1}
+\end{sankey}
+\TestEq{colors a}{\sankeyNodeInfo{a}{color}}{red}
+\TestEq{colors b by declaration}{\sankeyNodeInfo{b}{color}}{sankey-3}
+\TestEq{colors c}{\sankeyNodeInfo{c}{color}}{black!20}
+\end{tikzpicture}
+% the node's own key wins over node colors
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node colors={a=red}]
+  \sankeyNode[color=blue]{a}
+  \sankeyFlows{a -> b : 1}
+\end{sankey}
+\TestEq{later key}{\sankeyNodeInfo{a}{color}}{blue}
+\end{tikzpicture}
+% group colors and group palette
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[group colors={G1=red, G2=blue}]
+  \sankeyFlows{a -> b : 1 [group=G1], a -> c : 1 [group=G2], a -> d : 1 [group=G3], a -> e : 1 [group=G4]}
+\end{sankey}
+\TestEq{G1}{\sankeyGroupColor{G1}}{red}
+\TestEq{G2}{\sankeyGroupColor{G2}}{blue}
+\TestEq{G3 from palette}{\sankeyGroupColor{G3}}{sankey-3}
+\TestEq{G4 from palette}{\sankeyGroupColor{G4}}{sankey-4}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[group palette={cyan, magenta}]
+  \sankeyFlows{a -> b : 1 [group=G1], a -> c : 1 [group=G2], a -> d : 1 [group=G3]}
+\end{sankey}
+\TestEq{pal G1}{\sankeyGroupColor{G1}}{cyan}
+\TestEq{pal G2}{\sankeyGroupColor{G2}}{magenta}
+\TestEq{pal G3 wraps}{\sankeyGroupColor{G3}}{cyan}
+\TestEq{nodes keep palette}{\sankeyNodeInfo{b}{color}}{sankey-2}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[palette={red, green}]
+  \sankeyGroup[color=blue]{X}
+  \sankeyFlows{a -> b : 1 [group=Y], a -> c : 1 [group=X]}
+\end{sankey}
+\TestEq{group palette follows palette: Y}{\sankeyGroupColor{Y}}{green}
+\TestEq{group X by group key}{\sankeyGroupColor{X}}{blue}
+\end{tikzpicture}
+% a flow's own group declares the group
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 1 [group=Late]}
+  \sankeyGroup[color=violet]{Late}
+\end{sankey}
+\TestEq{late group color}{\sankeyGroupColor{Late}}{violet}
+\end{tikzpicture}
+% the presets
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[alluvial]
+  \sankeyFlows{a -> b : 1}
+  \ExplSyntaxOn
+  \TestEq{alluvial node color}{\l__sankey_nodecolor_tl}{black!12}
+  \TestEq{alluvial flow color}{\l__sankey_flowcolor_tl}{auto}
+  \TestEq{alluvial align}{\l__sankey_align_tl}{top}
+  \TestEq{alluvial width}{\bool_if:NTF \l__sankey_autowidth_bool {auto} {fixed}}{auto}
+  \TestEq{alluvial label}{\l__sankey_labelpos_tl}{inside}
+  \TestEq{alluvial opacity}{\fp_use:N \l__sankey_opacity_fp}{0.6}
+  \ExplSyntaxOff
+\end{sankey}
+\TestEq{alluvial node}{\sankeyNodeInfo{a}{color}}{black!12}
+\TestEq{alluvial node b}{\sankeyNodeInfo{b}{color}}{black!12}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[classic]
+  \sankeyFlows{a -> b : 1}
+  \ExplSyntaxOn
+  \TestEq{classic flow color}{\l__sankey_flowcolor_tl}{source}
+  \TestEq{classic align}{\l__sankey_align_tl}{center}
+  \TestEq{classic layout}{\l__sankey_layout_tl}{left}
+  \TestEq{classic tint}{\fp_use:N \l__sankey_tint_fp}{100}
+  \ExplSyntaxOff
+\end{sankey}
+\TestEq{classic node}{\sankeyNodeInfo{a}{color}}{sankey-1}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[energy]
+  \sankeyFlows{a -> b : 1}
+  \ExplSyntaxOn
+  \TestEq{energy flow color}{\l__sankey_flowcolor_tl}{target}
+  \TestEq{energy curvature}{\fp_use:N \l__sankey_curv_fp}{0.6}
+  \TestEq{energy opacity}{\fp_use:N \l__sankey_opacity_fp}{0.8}
+  \ExplSyntaxOff
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[black and white]
+  \sankeyFlows{a -> b : 1}
+  \ExplSyntaxOn
+  \TestEq{black and white flow color}{\l__sankey_flowcolor_tl}{black}
+  \TestEq{black and white tint}{\fp_use:N \l__sankey_tint_fp}{22}
+  \TestEq{black and white node color}{\l__sankey_nodecolor_tl}{black}
+  \ExplSyntaxOff
+\end{sankey}
+\TestEq{black and white node}{\sankeyNodeInfo{a}{color}}{black}
+\end{tikzpicture}
+% flow color choices are only read when drawing: all of them are accepted
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[flow color=gradient]
+  \sankeyFlows{a -> b : 1}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[flow color=target]
+  \sankeyFlows{a -> b : 1, b -> c : 1 [color=red, tint=20, opacity=.3, from color=blue, to color=green, style={draw}]}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[flow fade=both]
+  \sankeyFlows{a -> b : 1 [fade=in], b -> c : 1 [group=G]}
+\end{sankey}
+\end{tikzpicture}
+% color keys are expanded when they are read, so loop variables work
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \foreach \n/\c in {a/red, b/green}{
+    \sankeyNode[color=\c]{\n}
+    \sankeyGroup[color=\c!50]{G\n}
+  }
+  \sankeyFlows{a -> b : 1}
+\end{sankey}
+\TestEq{loop node a}{\sankeyNodeInfo{a}{color}}{red}
+\TestEq{loop node b}{\sankeyNodeInfo{b}{color}}{green}
+\TestEq{loop group}{\sankeyGroupColor{Gb}}{green!50}
+\TYPE{colors: \sankeyNodeInfo{a}{color} \sankeyGroupColor{Gb}}
+\end{tikzpicture}
+\END
+\end{document}

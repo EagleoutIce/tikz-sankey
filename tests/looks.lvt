@@ -1,0 +1,78 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\ExplSyntaxOn
+\NewExpandableDocumentCommand \NodeRounding { } { \fp_to_dim:n { \l__sankey_nround_fp } }
+\NewExpandableDocumentCommand \OuterRounding { } { \fp_to_dim:n { \l__sankey_oround_fp } }
+\NewExpandableDocumentCommand \FlowOutline { } { \l__sankey_outline_tl }
+\ExplSyntaxOff
+\newbox\ba\newbox\bb\newbox\bc\newcount\firsts \newcount\lasts \newcount\inner
+% the keys and their defaults
+\begin{tikzpicture}
+\TestDim{default node rounding}{\NodeRounding}{0pt}{0.01pt}
+\TestDim{default outer rounding}{\OuterRounding}{0.35mm}{0.01pt}
+\TestEq{default outline}{\FlowOutline}{none}
+\sankeySetup{node rounding=1mm, outer rounding=0pt, flow outline=black}
+\TestDim{node rounding}{\NodeRounding}{1mm}{0.01pt}
+\TestDim{outer rounding off}{\OuterRounding}{0pt}{0.01pt}
+\TestEq{outline}{\FlowOutline}{black}
+\begin{sankey}[name prefix=k1-]
+  \sankeyFlows{a -> b : 3, c -> b : 1}
+\end{sankey}
+\TestHas{rounded node}{k1-a}
+\TestHas{rounded node}{k1-b}
+\end{tikzpicture}
+% the keys are local to the picture
+\begin{tikzpicture}
+\TestDim{rounding is local}{\NodeRounding}{0pt}{0.01pt}
+\TestEq{outline is local}{\FlowOutline}{none}
+\end{tikzpicture}
+% every first node and every last node: the nodes of the first and last column only
+\begin{tikzpicture}
+\global\firsts=0 \global\lasts=0 \global\inner=0
+\begin{sankey}[name prefix=k2-,
+  every first node/.style={insert path={\pgfextra{\global\advance\firsts by 1}}},
+  every last node/.style={insert path={\pgfextra{\global\advance\lasts by 1}}},
+  every node/.style={insert path={\pgfextra{\global\advance\inner by 1}}}]
+  \sankeyFlows{a -> m : 2, b -> m : 1, m -> x : 1, m -> y : 1, m -> z : 1}
+\end{sankey}
+\end{tikzpicture}
+\TestEq{first nodes}{\the\firsts}{2}
+\TestEq{last nodes}{\the\lasts}{3}
+\TestEq{all nodes}{\the\inner}{6}
+% a unit follows a thin space
+\begin{tikzpicture}
+\sankeySetup{value unit=kg}
+\global\setbox\ba\hbox{\pgfinterruptpicture\sankeyNumber{5}\endpgfinterruptpicture}
+\global\setbox\bb\hbox{\pgfinterruptpicture 5\,kg\endpgfinterruptpicture}
+\begin{sankey}[values, name prefix=k3-, label position=none]
+  \sankeyFlows{a -> b : 5}
+\end{sankey}
+\end{tikzpicture}
+\TestDim{unit width}{\wd\ba}{\wd\bb}{0.01pt}
+\sbox\bc{5}
+\TestLess{plain is narrower}{\wd\bc}{\wd\ba}
+\sbox2{\sankeyNumber{5}}
+\TestDim{unit is local}{\wd2}{\wd\bc}{0.01pt}
+\sbox2{5\,km}
+\begin{tikzpicture}
+\sankeySetup{value unit={km}}
+\global\setbox\ba\hbox{\pgfinterruptpicture\sankeyNumber{5}\endpgfinterruptpicture}
+\end{tikzpicture}
+\TestDim{other unit}{\wd\ba}{\wd2}{0.01pt}
+% inline node keys
+\begin{tikzpicture}
+\begin{sankey}[name prefix=k4-]
+  \sankeyFlows{butter[0, color=red] -> bread : 1, milk -> bread : 1}
+\end{sankey}
+\TestEq{butter column}{\sankeyNodeInfo{butter}{column}}{0}
+\TestEq{butter color}{\sankeyNodeInfo{butter}{color}}{red}
+\TestEq{milk column}{\sankeyNodeInfo{milk}{column}}{0}
+\TestEq{bread column}{\sankeyNodeInfo{bread}{column}}{1}
+\TestHas{butter node}{k4-butter}
+\end{tikzpicture}
+\END
+\end{document}

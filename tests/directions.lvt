@@ -1,0 +1,88 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% a (value 10) in column 0, b (value 10) in column 1; node width 2pt, column sep 50pt
+% the center of a node: u = start + 1pt along the flow, s = 5pt across it
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[direction=right]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{right a}{sankey-a}{center}{1pt}{-5pt}
+\TestAnchor{right b}{sankey-b}{center}{51pt}{-5pt}
+\TestAnchor{right a nw}{sankey-a}{north west}{0pt}{0pt}
+\TestAnchor{right b se}{sankey-b}{south east}{52pt}{-10pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[direction=down]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{down a}{sankey-a}{center}{5pt}{-1pt}
+\TestAnchor{down b}{sankey-b}{center}{5pt}{-51pt}
+\TestAnchor{down a nw}{sankey-a}{north west}{0pt}{0pt}
+\TestAnchor{down b se}{sankey-b}{south east}{10pt}{-52pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[direction=left]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{left a}{sankey-a}{center}{-1pt}{-5pt}
+\TestAnchor{left b}{sankey-b}{center}{-51pt}{-5pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[direction=up]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{up a}{sankey-a}{center}{5pt}{1pt}
+\TestAnchor{up b}{sankey-b}{center}{5pt}{51pt}
+\TestAnchor{up b north}{sankey-b}{north}{5pt}{52pt}
+\end{tikzpicture}
+% node info does not depend on the direction
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[direction=up]
+  \sankeyFlows{a -> b : 10, a -> c : 5}
+\end{sankey}
+\TestDim{up: c top}{\sankeyNodeInfo{c}{top}}{12pt}{0.01pt}
+\TestDim{up: b start}{\sankeyNodeInfo{b}{start}}{50pt}{0.01pt}
+\end{tikzpicture}
+% name prefix
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=foo-]
+  \sankeyFlows{zz1 -> zz2 : 10}
+\end{sankey}
+\TestHas{prefix a}{foo-zz1}
+\TestHas{prefix b}{foo-zz2}
+\TestNo{no default prefix}{sankey-zz1}
+\TestAnchor{prefixed b}{foo-zz2}{center}{51pt}{-5pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestHas{default a}{sankey-a}
+\TestHas{default b}{sankey-b}
+\end{tikzpicture}
+% two diagrams side by side with different prefixes
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l-]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\begin{scope}[xshift=200pt]
+\begin{sankey}[name prefix=r-]
+  \sankeyFlows{a -> b : 4}
+\end{sankey}
+\end{scope}
+\TestAnchor{left diagram}{l-b}{center}{51pt}{-5pt}
+\TestAnchor{right diagram}{r-b}{center}{251pt}{-2pt}
+\end{tikzpicture}
+% the sankeypicture environment and \sankeyDiagram draw a picture of their own
+\sankeySetup{base}
+\begin{sankeypicture}[name prefix=p-]
+  \sankeyFlows{a -> b : 10}
+\end{sankeypicture}
+\sankeyDiagram[unit=1pt, name prefix=d-]{a -> b : 3}
+\TestEq{two pictures}{\sankeyFlowCount}{1}
+\END
+\end{document}

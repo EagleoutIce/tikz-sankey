@@ -1,0 +1,111 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% flow 1: a->c (20), flow 2: a->b (10), flow 3: d->b (5)
+% column 1 holds c (top 0..20) and b (22..37) by declaration order
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> c : 20, a -> b : 10, d -> b : 5}
+\end{sankey}
+\TestEq{count}{\sankeyFlowCount}{3}
+\TestEq{from 1}{\sankeyFlowInfo{1}{from}}{a}
+\TestEq{to 1}{\sankeyFlowInfo{1}{to}}{c}
+\TestEq{value 1}{\sankeyFlowInfo{1}{value}}{20}
+\TestEq{from 3}{\sankeyFlowInfo{3}{from}}{d}
+\TestEq{to 2}{\sankeyFlowInfo{2}{to}}{b}
+\TestDim{n top c}{\sankeyNodeInfo{c}{top}}{0pt}{0.01pt}
+\TestDim{n top b}{\sankeyNodeInfo{b}{top}}{22pt}{0.01pt}
+\TestDim{n top d}{\sankeyNodeInfo{d}{top}}{32pt}{0.01pt}
+% sorted: the flow that ends higher leaves higher
+\TestDim{sorted: 1 start}{\sankeyFlowInfo{1}{start}}{0pt}{0.01pt}
+\TestDim{sorted: 2 start}{\sankeyFlowInfo{2}{start}}{20pt}{0.01pt}
+\TestDim{sorted: 3 start}{\sankeyFlowInfo{3}{start}}{32pt}{0.01pt}
+\TestDim{sorted: 1 end}{\sankeyFlowInfo{1}{end}}{0pt}{0.01pt}
+\TestDim{sorted: 2 end}{\sankeyFlowInfo{2}{end}}{22pt}{0.01pt}
+\TestDim{sorted: 3 end}{\sankeyFlowInfo{3}{end}}{32pt}{0.01pt}
+\TYPE{ports: \sankeyFlowInfo{1}{start} \sankeyFlowInfo{2}{start} \sankeyFlowInfo{3}{start} / \sankeyFlowInfo{1}{end} \sankeyFlowInfo{2}{end} \sankeyFlowInfo{3}{end}}
+\end{tikzpicture}
+% sorted reorders flows that were declared the other way round
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[flow order=sorted]
+  \sankeyFlows{a -> c : 20, a -> b : 10}
+  \sankeyFlow{a}{b}{3}
+\end{sankey}
+\TestEq{count 3}{\sankeyFlowCount}{3}
+\TestDim{sorted again: 1}{\sankeyFlowInfo{1}{start}}{0pt}{0.01pt}
+\TestDim{sorted again: 2}{\sankeyFlowInfo{2}{start}}{20pt}{0.01pt}
+\TestDim{sorted again: 3}{\sankeyFlowInfo{3}{start}}{30pt}{0.01pt}
+\end{tikzpicture}
+% declaration order: the order of the flows
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[flow order=declaration]
+  \sankeyNode{b}\sankeyNode{c}
+  \sankeyFlows{a -> c : 20, a -> b : 10}
+\end{sankey}
+\TestDim{decl: 1}{\sankeyFlowInfo{1}{start}}{0pt}{0.01pt}
+\TestDim{decl: 2}{\sankeyFlowInfo{2}{start}}{20pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[flow order=declaration]
+  \sankeyNode{c}\sankeyNode{b}
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{decl: b first}{\sankeyFlowInfo{1}{start}}{0pt}{0.01pt}
+\TestDim{decl: c second}{\sankeyFlowInfo{2}{start}}{10pt}{0.01pt}
+\TestDim{decl: b is below c}{\sankeyNodeInfo{b}{top}}{22pt}{0.01pt}
+\end{tikzpicture}
+% group: by group first, then by the end
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[flow order=group]
+  \sankeyGroup{g1}\sankeyGroup{g2}
+  \sankeyNode{c}\sankeyNode{b}
+  \sankeyFlow[group=g2]{a}{c}{20}
+  \sankeyFlow[group=g1]{a}{b}{10}
+\end{sankey}
+\TestEq{group of 1}{\sankeyFlowInfo{1}{group}}{g2}
+\TestEq{group of 2}{\sankeyFlowInfo{2}{group}}{g1}
+\TestDim{group: g1 first}{\sankeyFlowInfo{2}{start}}{0pt}{0.01pt}
+\TestDim{group: g2 second}{\sankeyFlowInfo{1}{start}}{10pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[flow order=sorted]
+  \sankeyGroup{g1}\sankeyGroup{g2}
+  \sankeyNode{c}\sankeyNode{b}
+  \sankeyFlow[group=g2]{a}{c}{20}
+  \sankeyFlow[group=g1]{a}{b}{10}
+\end{sankey}
+\TestDim{sorted ignores group: 1}{\sankeyFlowInfo{1}{start}}{0pt}{0.01pt}
+\TestDim{sorted ignores group: 2}{\sankeyFlowInfo{2}{start}}{20pt}{0.01pt}
+\end{tikzpicture}
+% port align center: a flow bundle smaller than its node is centered
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[port align=center]
+  \sankeyNode[value=20]{a}
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestDim{center: a top}{\sankeyNodeInfo{a}{top}}{0pt}{0.01pt}
+\TestDim{center: a height}{\sankeyNodeInfo{a}{height}}{20pt}{0.01pt}
+\TestDim{center: start}{\sankeyFlowInfo{1}{start}}{5pt}{0.01pt}
+\TestDim{center: end}{\sankeyFlowInfo{1}{end}}{0pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[port align=top]
+  \sankeyNode[value=20]{a}
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestDim{top: start}{\sankeyFlowInfo{1}{start}}{0pt}{0.01pt}
+\end{tikzpicture}
+% several flows into a larger node keep stacking
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[port align=center]
+  \sankeyNode[value=30]{b}
+  \sankeyFlows{a -> b : 10, c -> b : 10}
+\end{sankey}
+\TestDim{center in: first}{\sankeyFlowInfo{1}{end}}{5pt}{0.01pt}
+\TestDim{center in: second}{\sankeyFlowInfo{2}{end}}{15pt}{0.01pt}
+\end{tikzpicture}
+\END
+\end{document}

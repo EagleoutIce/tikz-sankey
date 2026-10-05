@@ -1,0 +1,190 @@
+This is a generated file for the l3build validation system.
+Don't change this file in any respect.
+Package tikz-sankey Warning: The flow `b' -> `c' has the negative value -2. It is dropped.
+Package tikz-sankey Warning: The flow `a' -> `b' has the negative value -1. It is dropped.
+! Package tikz-sankey Error: The flow `a' -> `b' names the undeclared node `b'. Declare it with \sankeyNode or set `auto nodes'. The flow is dropped.
+Type <return> to continue.
+ ...                                              
+l. ...  \sankeyFlows{a -> b : 4}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The flow `x' -> `a' names the undeclared node `x'. Declare it with \sankeyNode or set `auto nodes'. The flow is dropped.
+Type <return> to continue.
+ ...                                              
+l. ...  \sankeyFlow{x}{a}{1}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The flow `a' -> `b' runs from column 2 to column 1, but flows must run to a later column. The flow is dropped.
+Type <return> to continue.
+ ...                                              
+l. ...\end{sankey}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The flow `a' -> `b' runs from column 1 to column 1, but flows must run to a later column. The flow is dropped.
+Type <return> to continue.
+ ...                                              
+l. ...\end{sankey}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: sankey environments cannot be nested.
+Type <return> to continue.
+ ...                                              
+l. ...    \sankeyFlows
+                     {c -> d : 4}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: \sankeyNode  can only be used inside a sankey environment.
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyNode{a}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: \sankeyNodes  can only be used inside a sankey environment.
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyNodes{a, b}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: \sankeyFlow  can only be used inside a sankey environment.
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyFlow{a}{b}{1}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: \sankeyFlows  can only be used inside a sankey environment.
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyFlows{a -> b : 1}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: \sankeyAlluvium  can only be used inside a sankey environment.
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyAlluvium{a, b}{1}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: \sankeyGroup  can only be used inside a sankey environment.
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyGroup{g}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: \sankeyColumnTitle  can only be used inside a sankey environment.
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyColumnTitle{0}{Title}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `align' does not accept `middle' (choose one of top,center,bottom).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{align=middle}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `layout' does not accept `diagonal' (choose one of left,right,center,justify).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{layout=diagonal}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `node order' does not accept `random' (choose one of declaration,decreasing,increasing).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{node order=random}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `flow order' does not accept `random' (choose one of sorted,group,declaration).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{flow order=random}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `port align' does not accept `bottom' (choose one of top,center).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{port align=bottom}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `direction' does not accept `sideways' (choose one of right, down, left, up).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{direction=sideways}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `label position' does not accept `middle' (choose one of auto,before,after,inside,none,left,right,above,below).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{label position=middle}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `value label position' does not accept `middle' (choose one of auto,before,after,inside,none,left,right,above,below).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{value label position=middle}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `flow fade' does not accept `maybe' (choose one of none,in,out,both).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{flow fade=maybe}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `legend' does not accept `middle' (choose one of auto,none,right,below,above,left).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{legend=middle}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `legend for' does not accept `colors' (choose one of groups,nodes).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{legend for=colors}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `label side' does not accept `up' (choose one of ahead,behind,left,right,east,north,west,south).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyRoute{r}{label side=up}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The key `fade' does not accept `sometimes' (choose one of none,in,out,both).
+Type <return> to continue.
+ ...                                              
+l. ...\sankeyRoute{r}{fade=sometimes}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+Package tikz-sankey Warning: Node `b' has the value 5, but its flows carry 10. It grows to 10.
+! Package tikz-sankey Error: The height (3pt) leaves no room for the nodes after the gaps. Increase `height' or set `unit'.
+Type <return> to continue.
+ ...                                              
+l. ...\end{sankey}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+Package tikz-sankey Warning: The diagram has no node with a positive value. Nothing is drawn.
+Package tikz-sankey Warning: The parts of route `r' carry 12, more than its 10.

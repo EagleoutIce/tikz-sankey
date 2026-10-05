@@ -1,0 +1,29 @@
+\documentclass{article}
+\usepackage{siunitx}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% without the key a number is plain, with it it goes through \num and \qty
+\sbox0{\sankeyNumber{12345.5}}
+\sbox2{\num[mode=text]{12345.5}}
+\TestLess{plain differs from siunitx}{\wd0}{\wd2}
+\begin{tikzpicture}\sankeySetup{base}
+\sankeySetup{siunitx}
+\begin{sankey}[values, label position=none]
+  \sankeyFlows{a -> b : 12345.5}
+\end{sankey}
+\global\setbox0\hbox{\pgfinterruptpicture\sankeyNumber{12345.5}\endpgfinterruptpicture}
+\global\setbox4\hbox{\pgfinterruptpicture\sankeyPercent{1}{4}\endpgfinterruptpicture}
+\global\setbox6\hbox{\pgfinterruptpicture\qty[mode=text]{25}{\percent}\endpgfinterruptpicture}
+\global\setbox2\hbox{\pgfinterruptpicture\num[mode=text]{12345.5}\endpgfinterruptpicture}
+\end{tikzpicture}
+\TestDim{siunitx number width}{\wd0}{\wd2}{0.01pt}
+\TestDim{siunitx percent width}{\wd4}{\wd6}{0.01pt}
+% the key set inside a picture is local to it
+\sbox0{\sankeyNumber{12345.5}}
+\sbox4{12345.5}
+\TestDim{the key is local to the picture}{\wd0}{\wd4}{0.01pt}
+\END
+\end{document}

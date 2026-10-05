@@ -1,0 +1,209 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% label nodes and their sides: a label of the first column goes before, all others after
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l1-, value label={V}]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestHas{label a}{l1-a-label}
+\TestHas{label b}{l1-b-label}
+\TestHas{value a}{l1-a-value}
+\TestHas{value b}{l1-b-value}
+\TestAnchor{a label before}{l1-a-label}{east}{-1mm}{-5pt}
+\TestAnchor{a value after}{l1-a-value}{west}{2pt+1mm}{-5pt}
+\TestAnchor{b label after}{l1-b-label}{west}{52pt+1mm}{-5pt}
+\TestAnchor{b value before}{l1-b-value}{east}{50pt-1mm}{-5pt}
+\end{tikzpicture}
+% without a value label there is no value node
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l2-]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestHas{label a}{l2-a-label}
+\TestNo{no value}{l2-a-value}
+\end{tikzpicture}
+% label distance
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l3-, label distance=6pt]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{distance a}{l3-a-label}{east}{-6pt}{-5pt}
+\TestAnchor{distance b}{l3-b-label}{west}{58pt}{-5pt}
+\end{tikzpicture}
+% label position
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l4-, label position=inside, node width=20pt]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{inside a}{l4-a-label}{center}{10pt}{-5pt}
+\TestAnchor{inside b}{l4-b-label}{center}{60pt}{-5pt}
+\end{tikzpicture}
+% a node too narrow for its label inside grows to fit it
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l4b-, label position=inside]
+  \sankeyFlows{a wide label -> b : 10}
+\end{sankey}
+\makeatletter
+\pgfpointanchor{l4b-a wide label-label}{east}\xdef\labeast{\the\pgf@x}
+\pgfpointanchor{l4b-a wide label}{east}\xdef\nodeeast{\the\pgf@x}
+\makeatother
+\TestLess{inside label fits}{\labeast}{\nodeeast}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l5-, label position=none, value label={V}, value label position=none]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestNo{none a}{l5-a-label}
+\TestNo{none b}{l5-b-label}
+\TestNo{none value}{l5-a-value}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l6-, label position=left, value label={V}, value label position=right]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{left b}{l6-b-label}{east}{50pt-1mm}{-5pt}
+\TestAnchor{right b value}{l6-b-value}{west}{52pt+1mm}{-5pt}
+\end{tikzpicture}
+% in a vertical diagram a label goes before or after across the other axis
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l7-, direction=down]
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{down a before}{l7-a-label}{south}{5pt}{1mm}
+\TestAnchor{down b after}{l7-b-label}{north}{5pt}{-52pt-1mm}
+\end{tikzpicture}
+% one node with its own label, position and style
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=l8-]
+  \sankeyNode[label position=inside, label={Hi}, label style={draw}]{b}
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestAnchor{own: a before}{l8-a-label}{east}{-1mm}{-5pt}
+\makeatletter\pgfpointanchor{l8-b-label}{center}\xdef\labx{\the\pgf@x}\pgfpointanchor{l8-b}{center}\xdef\nodex{\the\pgf@x}\makeatother
+\TestDim{own: b inside}{\labx-\nodex}{0pt}{.05pt}
+\end{tikzpicture}
+% crowded labels: a later label is pushed down just far enough
+\begin{tikzpicture}\sankeySetup{base, node sep=0pt}
+\begin{sankey}[name prefix=l9-]
+  \sankeyNodes{b = B, c = C, d = D}
+  \sankeyFlows{a -> b : 1, a -> c : 1, a -> d : 1}
+\end{sankey}
+\AnchorY{l9-b-label}{center}{\yb}
+\AnchorY{l9-c-label}{center}{\yc}
+\AnchorY{l9-d-label}{center}{\yd}
+\AnchorY{l9-b-label}{south}{\ybs}
+\AnchorY{l9-c-label}{north}{\ycn}
+\AnchorY{l9-c-label}{south}{\ycs}
+\AnchorY{l9-d-label}{north}{\ydn}
+\TestDim{b at its node}{\yb}{-.5pt}{0.05pt}
+\TestLess{c below b}{\yc}{\yb}
+\TestLess{d below c}{\yd}{\yc}
+\TestDim{sep b c}{\ybs - \ycn}{1pt}{0.05pt}
+\TestDim{sep c d}{\ycs - \ydn}{1pt}{0.05pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base, node sep=0pt}
+\begin{sankey}[name prefix=m1-, label sep=6pt]
+  \sankeyNodes{b = B, c = C}
+  \sankeyFlows{a -> b : 1, a -> c : 1}
+\end{sankey}
+\AnchorY{m1-b-label}{south}{\ybs}
+\AnchorY{m1-c-label}{north}{\ycn}
+\TestDim{label sep}{\ybs - \ycn}{6pt}{0.05pt}
+\end{tikzpicture}
+% labels that do not touch stay where their nodes are
+\begin{tikzpicture}\sankeySetup{base, node sep=30pt}
+\begin{sankey}[name prefix=m2-]
+  \sankeyNodes{b = B, c = C}
+  \sankeyFlows{a -> b : 1, a -> c : 1}
+\end{sankey}
+\AnchorY{m2-b-label}{center}{\yb}
+\AnchorY{m2-c-label}{center}{\yc}
+\TestDim{free b}{\yb}{-.5pt}{0.05pt}
+\TestDim{free c}{\yc}{-31.5pt}{0.05pt}
+\end{tikzpicture}
+% inside labels never push
+\begin{tikzpicture}\sankeySetup{base, node sep=0pt}
+\begin{sankey}[name prefix=m3-, label position=inside]
+  \sankeyNodes{b = B, c = C}
+  \sankeyFlows{a -> b : 1, a -> c : 1}
+\end{sankey}
+\AnchorY{m3-b-label}{center}{\yb}
+\AnchorY{m3-c-label}{center}{\yc}
+\TestDim{inside b}{\yb}{-.5pt}{0.05pt}
+\TestDim{inside c}{\yc}{-1.5pt}{0.05pt}
+\end{tikzpicture}
+% label text: \sankeyName and the numbers
+\begin{tikzpicture}\sankeySetup{base, number format={\TYPE{num #1}}, percent format={\TYPE{pct #1}}}
+\begin{sankey}[name prefix=t1-, label={\TYPE{name \sankeyName}}, value label={\sankeyValue}, percent precision=0]
+  \sankeyFlows{a -> b : 30, a -> c : 10.123}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base, number format={\TYPE{num #1}}, percent format={\TYPE{pct #1}}}
+\begin{sankey}[name prefix=t2-, label=, value label={\TYPE{\sankeyName}\sankeyShare}, percent precision=0]
+  \sankeyFlows{a -> b : 30, a -> c : 10}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base, number format={\TYPE{num #1}}, percent format={\TYPE{pct #1}}}
+\begin{sankey}[name prefix=t3-, label=, value label={\TYPE{\sankeyName}\sankeyShare[0]}, percent precision=0]
+  \sankeyFlows{a -> b : 30, a -> c : 10}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base, number format={\TYPE{num #1}}, percent format={\TYPE{pct #1}}}
+\begin{sankey}[name prefix=t4-, label=, value label={\TYPE{\sankeyName}\sankeyPercentOf{a}}, percent precision=0]
+  \sankeyFlows{a -> b : 30, a -> c : 10}
+\end{sankey}
+\end{tikzpicture}
+% the formatting commands on their own
+\begin{tikzpicture}
+\sankeySetup{number format={\xdef\lastnum{#1}}, percent format={\xdef\lastpct{#1}}, precision=2, percent precision=1}
+\sankeyNumber{3.14159}\TestEq{number}{\lastnum}{3.14}
+\sankeyNumber{2}\TestEq{integer}{\lastnum}{2}
+\sankeyNumber{1/3}\TestEq{expression}{\lastnum}{0.33}
+\sankeySetup{precision=0}
+\sankeyNumber{2.6}\TestEq{precision 0}{\lastnum}{3}
+\sankeySetup{precision=3}
+\sankeyNumber{2.12345}\TestEq{precision 3}{\lastnum}{2.123}
+\sankeyPercent{1}{3}\TestEq{percent}{\lastpct}{33.3}
+\sankeyPercent{1}{4}\TestEq{percent exact}{\lastpct}{25}
+\sankeySetup{percent precision=0}
+\sankeyPercent{2}{3}\TestEq{percent precision 0}{\lastpct}{67}
+\sankeySetup{percent precision=2}
+\sankeyPercent{1}{8}\TestEq{percent precision 2}{\lastpct}{12.5}
+\def\lastpct{untouched}
+\font\tf=cmr10 \setbox0\hbox{\tf \sankeyPercent{1}{0}}
+\TestEq{percent of zero skips the format}{\lastpct}{untouched}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base, number format={\xdef\lastnum{#1}}, percent format={\xdef\lastpct{#1}}, precision=1}
+\begin{sankey}
+  \sankeyFlows{a -> b : 30, a -> c : 10}
+\end{sankey}
+\sankeyValueOf{b}\TestEq{value of}{\lastnum}{30}
+\sankeyValueOf{c}\TestEq{value of c}{\lastnum}{10}
+\TestEq{column total}{\sankeyColumnTotal{1}}{40}
+\end{tikzpicture}
+% column titles and the legend
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=c1-, column titles={First, Second}, legend=right]
+  \sankeyColumnTitle[color=red]{2}{Third}
+  \sankeyFlows{a -> b -> c : 4 [group=G]}
+\end{sankey}
+\TestHas{legend}{c1-legend}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=c2-, legend=below, legend for=nodes]
+  \sankeyFlows{a -> b : 4}
+\end{sankey}
+\TestHas{node legend}{c2-legend}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[name prefix=c3-]
+  \sankeyFlows{a -> b : 4}
+\end{sankey}
+\TestNo{no legend by default}{c3-legend}
+\end{tikzpicture}
+\END
+\end{document}

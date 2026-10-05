@@ -1,0 +1,50 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\ExplSyntaxOn
+\dim_new:N \l_sankeytest_maxoff_dim
+% the largest distance of a label from the middle of its node
+\NewDocumentCommand \MaxLabelOffset { m m }
+  {
+    \dim_zero:N \l_sankeytest_maxoff_dim
+    \seq_map_inline:Nn \g__sankey_nodes_seq
+      {
+        \__sankey_has:nnF { dummy } {##1}
+          {
+            \AnchorY { #1 ##1 } { center } \l_sankeytest_nodey_tl
+            \AnchorY { #1 ##1 -label } { \int_compare:nNnTF { \sankeyNodeInfo {##1} { column } } = { 0 } { east } { west } } \l_sankeytest_labely_tl
+            \dim_set:Nn \l_sankeytest_maxoff_dim
+              { \dim_max:nn { \l_sankeytest_maxoff_dim } { \dim_abs:n { \l_sankeytest_labely_tl - \l_sankeytest_nodey_tl } } }
+          }
+      }
+    \dim_set:Nn #2 { \l_sankeytest_maxoff_dim }
+  }
+\tl_new:N \l_sankeytest_nodey_tl
+\tl_new:N \l_sankeytest_labely_tl
+\ExplSyntaxOff
+\newdimen\maxoff
+% with room for the labels none is pushed away
+\begin{tikzpicture}
+\begin{sankey}[name prefix=r1-, node color=column, values, width=8cm, height=28mm, label room=true]
+  \sankeyFlows{week -> lazy : 118, week -> busy : 31, week -> hungry : 19,
+    lazy -> sleeping : 96, lazy -> loafing : 22, busy -> judging : 17, busy -> knocking : 14,
+    hungry -> eating : 7, hungry -> begging : 12}
+\end{sankey}
+\MaxLabelOffset{r1-}{\maxoff}
+\TestDim{no label pushed}{\maxoff}{0pt}{0.5pt}
+\end{tikzpicture}
+% without it, in a tight diagram, labels are pushed
+\begin{tikzpicture}
+\begin{sankey}[name prefix=r2-, node color=column, values, width=8cm, height=20mm, label room=false]
+  \sankeyFlows{week -> lazy : 118, week -> busy : 31, week -> hungry : 19,
+    lazy -> sleeping : 96, lazy -> loafing : 22, busy -> judging : 17, busy -> knocking : 14,
+    hungry -> eating : 7, hungry -> begging : 12}
+\end{sankey}
+\MaxLabelOffset{r2-}{\maxoff}
+\TestLess{some label pushed}{2pt}{\maxoff}
+\end{tikzpicture}
+\END
+\end{document}

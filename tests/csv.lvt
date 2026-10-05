@@ -1,0 +1,77 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% header detected automatically
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyCSV{flows-header.csv}
+\end{sankey}
+\TestEq{auto header: count}{\sankeyFlowCount}{3}
+\TestEq{from 1}{\sankeyFlowInfo{1}{from}}{a}
+\TestEq{to 2}{\sankeyFlowInfo{2}{to}}{c}
+\TestEq{value 3}{\sankeyFlowInfo{3}{value}}{5}
+\TestEq{group 2}{\sankeyFlowInfo{2}{group}}{G2}
+\TestEq{group color exists}{\sankeyGroupColor{G1}}{sankey-1}
+\end{tikzpicture}
+% no header line
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyCSV{flows-plain.csv}
+\end{sankey}
+\TestEq{auto no header}{\sankeyFlowCount}{3}
+\TestEq{first from}{\sankeyFlowInfo{1}{from}}{a}
+\TestEq{quoted separator}{\sankeyFlowInfo{2}{from}}{x, y}
+\TestEq{quote escape}{\sankeyFlowInfo{3}{from}}{say "hi"}
+\end{tikzpicture}
+% forced header
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyCSV[csv header=true]{flows-plain.csv}
+\end{sankey}
+\TestEq{header=true skips a line}{\sankeyFlowCount}{2}
+\TestEq{first is the second line}{\sankeyFlowInfo{1}{from}}{x, y}
+\end{tikzpicture}
+% separator
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyCSV[csv separator={;}]{flows-semi.csv}
+\end{sankey}
+\TestEq{semicolon count}{\sankeyFlowCount}{2}
+\TestEq{semicolon to}{\sankeyFlowInfo{2}{to}}{c}
+\TestEq{semicolon value}{\sankeyFlowInfo{1}{value}}{5}
+\end{tikzpicture}
+% columns in any order, other names ignored
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyCSV[csv columns={value, from, to, color, ignored}]{flows-cols.csv}
+\end{sankey}
+\TestEq{cols count}{\sankeyFlowCount}{2}
+\TestEq{cols from}{\sankeyFlowInfo{1}{from}}{p}
+\TestEq{cols to}{\sankeyFlowInfo{1}{to}}{q}
+\TestEq{cols value}{\sankeyFlowInfo{2}{value}}{6}
+\end{tikzpicture}
+% short rows are skipped with a warning
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyCSV{flows-short.csv}
+\end{sankey}
+\TestEq{short row skipped}{\sankeyFlowCount}{2}
+\TestEq{second flow}{\sankeyFlowInfo{2}{from}}{b}
+\end{tikzpicture}
+% flows of a CSV file are laid out like any others
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyCSV{flows-header.csv}
+\end{sankey}
+\TestEq{column of d}{\sankeyNodeInfo{d}{column}}{2}
+\TestEq{value of b}{\sankeyNodeInfo{b}{value}}{5}
+\TestDim{start of d}{\sankeyNodeInfo{d}{start}}{100pt}{0.01pt}
+\end{tikzpicture}
+% outside of an environment it draws a picture
+\sankeyCSV[base]{flows-header.csv}
+\TestHas{picture node}{sankey-d}
+\END
+\end{document}

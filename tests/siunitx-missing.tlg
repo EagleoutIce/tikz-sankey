@@ -1,0 +1,9 @@
+This is a generated file for the l3build validation system.
+Don't change this file in any respect.
+! Package tikz-sankey Error: The key `siunitx' needs the siunitx package.
+Type <return> to continue.
+ ...                                              
+l. ...\sankeySetup{siunitx}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.

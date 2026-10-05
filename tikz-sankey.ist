@@ -1,0 +1,6 @@
+% the index of the manual: a heading for each letter
+headings_flag 1
+heading_prefix "\\skidxletter{"
+heading_suffix "}"
+group_skip ""
+symhead_positive "Symbols"

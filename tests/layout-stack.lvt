@@ -1,0 +1,151 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% unit: values times unit; gaps of node sep; s grows downward from 0
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{a top}{\sankeyNodeInfo{a}{top}}{0pt}{0.01pt}
+\TestDim{a height}{\sankeyNodeInfo{a}{height}}{30pt}{0.01pt}
+\TestDim{a bottom}{\sankeyNodeInfo{a}{bottom}}{30pt}{0.01pt}
+\TestDim{b top}{\sankeyNodeInfo{b}{top}}{0pt}{0.01pt}
+\TestDim{b bottom}{\sankeyNodeInfo{b}{bottom}}{10pt}{0.01pt}
+\TestDim{c top}{\sankeyNodeInfo{c}{top}}{12pt}{0.01pt}
+\TestDim{c bottom}{\sankeyNodeInfo{c}{bottom}}{32pt}{0.01pt}
+\TestEq{a value}{\sankeyNodeInfo{a}{value}}{30}
+\TestEq{c in}{\sankeyNodeInfo{c}{in}}{20}
+\TestEq{c out}{\sankeyNodeInfo{c}{out}}{0}
+\TestEq{col total 1}{\sankeyColumnTotal{1}}{30}
+\TestEq{col total 0}{\sankeyColumnTotal{0}}{30}
+\TestEq{col total none}{\sankeyColumnTotal{7}}{0}
+\TYPE{stack: \sankeyNodeInfo{b}{top} \sankeyNodeInfo{c}{top} \sankeyNodeInfo{c}{bottom} \sankeyNodeInfo{c}{height}}
+\end{tikzpicture}
+% height instead of unit: the tallest column (with its gaps) fills the height
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[height=100pt, unit=]
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{height: a}{\sankeyNodeInfo{a}{height}}{98pt}{0.01pt}
+\TestDim{height: c bottom}{\sankeyNodeInfo{c}{bottom}}{100pt}{0.01pt}
+\TestDim{height: b}{\sankeyNodeInfo{b}{height}}{32.6667pt}{0.01pt}
+\end{tikzpicture}
+% height set after a unit overrides the unit
+\begin{tikzpicture}
+\begin{sankey}[unit=3pt, height=60pt, node sep=0pt]
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{height beats unit}{\sankeyNodeInfo{a}{height}}{60pt}{0.01pt}
+\end{tikzpicture}
+% node sep and min pitch
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node sep=10pt]
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{sep 10: c top}{\sankeyNodeInfo{c}{top}}{20pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[min pitch=25pt]
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{pitch: c top}{\sankeyNodeInfo{c}{top}}{25pt}{0.01pt}
+\end{tikzpicture}
+% skip and shift
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[skip=5pt]{b}
+  \sankeyNode[shift=3pt]{c}
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{skip: b top}{\sankeyNodeInfo{b}{top}}{5pt}{0.01pt}
+\TestDim{skip and shift: c top}{\sankeyNodeInfo{c}{top}}{20pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[shift=3pt]{b}
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{shift: b top}{\sankeyNodeInfo{b}{top}}{3pt}{0.01pt}
+\TestDim{shift: c top unchanged}{\sankeyNodeInfo{c}{top}}{12pt}{0.01pt}
+\end{tikzpicture}
+% align
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[align=center]
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{center: a top}{\sankeyNodeInfo{a}{top}}{1pt}{0.01pt}
+\TestDim{center: b top}{\sankeyNodeInfo{b}{top}}{0pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[align=bottom]
+  \sankeyFlows{a -> b : 10, a -> c : 20}
+\end{sankey}
+\TestDim{bottom: a top}{\sankeyNodeInfo{a}{top}}{2pt}{0.01pt}
+\TestDim{bottom: a bottom}{\sankeyNodeInfo{a}{bottom}}{32pt}{0.01pt}
+\end{tikzpicture}
+% node order
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node order=decreasing]
+  \sankeyFlows{a -> b : 10, a -> c : 20, a -> d : 5}
+\end{sankey}
+\TestDim{decreasing: c first}{\sankeyNodeInfo{c}{top}}{0pt}{0.01pt}
+\TestDim{decreasing: b second}{\sankeyNodeInfo{b}{top}}{22pt}{0.01pt}
+\TestDim{decreasing: d last}{\sankeyNodeInfo{d}{top}}{34pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node order=increasing]
+  \sankeyFlows{a -> b : 10, a -> c : 20, a -> d : 5}
+\end{sankey}
+\TestDim{increasing: d first}{\sankeyNodeInfo{d}{top}}{0pt}{0.01pt}
+\TestDim{increasing: b second}{\sankeyNodeInfo{b}{top}}{7pt}{0.01pt}
+\TestDim{increasing: c last}{\sankeyNodeInfo{c}{top}}{19pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 10, a -> c : 20, a -> d : 5}
+\end{sankey}
+\TestDim{declaration: d last}{\sankeyNodeInfo{d}{top}}{34pt}{0.01pt}
+\end{tikzpicture}
+% show empty: a node without value only takes room when asked to
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[value=0]{z}
+  \sankeyFlows{a -> x : 5, a -> y : 5}
+  \sankeyNode[column=1]{z}
+\end{sankey}
+\TestDim{hidden empty: y top}{\sankeyNodeInfo{y}{top}}{7pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[show empty]
+  \sankeyNode[value=0, column=1]{z}
+  \sankeyFlows{a -> x : 5, a -> y : 5}
+\end{sankey}
+\TestDim{shown empty: z top}{\sankeyNodeInfo{z}{top}}{0pt}{0.01pt}
+\TestDim{shown empty: z height}{\sankeyNodeInfo{z}{height}}{0pt}{0.01pt}
+\TestDim{shown empty: x top}{\sankeyNodeInfo{x}{top}}{2pt}{0.01pt}
+\TestDim{shown empty: y top}{\sankeyNodeInfo{y}{top}}{9pt}{0.01pt}
+\end{tikzpicture}
+% explicit values: a node can be taller than its flows
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[value=20]{b}
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestEq{explicit value}{\sankeyNodeInfo{b}{value}}{20}
+\TestDim{explicit height}{\sankeyNodeInfo{b}{height}}{20pt}{0.01pt}
+\TestEq{in stays}{\sankeyNodeInfo{b}{in}}{10}
+\end{tikzpicture}
+% at: the position along the flow of one node
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode[at=77pt]{b}
+  \sankeyFlows{a -> b : 10}
+\end{sankey}
+\TestDim{at}{\sankeyNodeInfo{b}{start}}{77pt}{0.01pt}
+\TestDim{at end}{\sankeyNodeInfo{b}{end}}{79pt}{0.01pt}
+\end{tikzpicture}
+\END
+\end{document}

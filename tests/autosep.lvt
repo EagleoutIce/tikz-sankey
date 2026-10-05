@@ -1,0 +1,55 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\def\Cs{\sankeyFlows{a -> b : 4, b -> c : 4}}
+% fixed separation
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[column sep=30pt]\Cs\end{sankey}
+\TestDim{fixed b}{\sankeyNodeInfo{b}{start}}{30pt}{0.01pt}
+\TestDim{fixed c}{\sankeyNodeInfo{c}{start}}{60pt}{0.01pt}
+\end{tikzpicture}
+% short labels: the minimum wins
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[column sep=auto, min column sep=40pt, flow room=1pt, label distance=1pt,
+    label position=after]
+  \sankeyFlows{a -> b : 4, b -> c : 4}
+\end{sankey}
+\TestDim{min b}{\sankeyNodeInfo{b}{start}}{40pt}{0.01pt}
+\TestDim{min c}{\sankeyNodeInfo{c}{start}}{80pt}{0.01pt}
+\end{tikzpicture}
+% long labels grow the gaps
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[column sep=auto, min column sep=10pt, flow room=1pt, label position=after]
+  \sankeyFlows{a -> b : 4, b -> c : 4}
+\end{sankey}
+\dimen0=\sankeyNodeInfo{b}{start}\relax
+\dimen2=\sankeyNodeInfo{c}{start}\relax
+\xdef\ShortB{\the\dimen0}\xdef\ShortGap{\the\dimexpr\dimen2-\dimen0\relax}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[column sep=auto, min column sep=10pt, flow room=1pt, label position=after]
+  \sankeyFlows{a -> bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb : 4, bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb -> c : 4}
+\end{sankey}
+% labels after a node belong to the gap behind it: the first gap keeps its size
+\TestDim{first gap unchanged}{\ShortB}{\sankeyNodeInfo{bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}{start}}{0.01pt}
+\TestLess{long label grows second gap}{\ShortGap}{\sankeyNodeInfo{c}{start} - \sankeyNodeInfo{bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}{start}}
+\TestLess{at least min sep}{10pt-0.01pt}{\sankeyNodeInfo{bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb}{start}}
+\end{tikzpicture}
+% flow room adds to the gap
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[column sep=auto, min column sep=1pt, flow room=20pt, label distance=1pt, label position=none]
+  \sankeyFlows{a -> b : 4}
+\end{sankey}
+\TestDim{room, no labels}{\sankeyNodeInfo{b}{start}}{24pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[column sep=auto, min column sep=1pt, flow room=40pt, label distance=1pt, label position=none]
+  \sankeyFlows{a -> b : 4}
+\end{sankey}
+\TestDim{more room}{\sankeyNodeInfo{b}{start}}{44pt}{0.01pt}
+\end{tikzpicture}
+\END
+\end{document}

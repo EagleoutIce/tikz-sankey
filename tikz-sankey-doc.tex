@@ -1,0 +1,824 @@
+% Florian Sihler, 2026
+% Licensed under MIT License
+% https://opensource.org/licenses/MIT
+\documentclass[10pt,parskip=half,english,numbers=noenddot,footnotes=nomultiple,oneside]{scrartcl}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{babel}
+\usepackage{newpxtext,newpxmath}
+\usepackage[varqu,varl,scaled=.96]{inconsolata}
+\usepackage{enumitem}
+\usepackage{needspace}
+\usepackage{booktabs}
+\usepackage[margin=2cm,includefoot]{geometry}
+\usepackage[group-separator={\,},group-minimum-digits=4]{siunitx}
+\usepackage{microtype}
+\raggedbottom
+\widowpenalty=10000 \clubpenalty=10000
+\usepackage[prefix=]{xcolor-material}
+\usepackage[fakeminted=false]{xlistings}
+\LoadLanguages{latex}
+\usepackage{tcolorbox}
+\tcbuselibrary{listings,skins,breakable}
+\usepackage{tikz-sankey}
+\usetikzlibrary{patterns,decorations.pathreplacing}
+\usepackage{hyperref}
+\usepackage[underline]{code-link}
+\CodeLinkSetup{underline-color=skcmd!45}
+\usepackage{imakeidx}
+\makeindex[title={Index of commands and keys},name=\jobname,columns=3,columnsep=.6cm,noautomatic=true,intoc]
+\indexsetup{othercode=\footnotesize}
+\newcommand\V[1]{\T{\color{skval}#1}}
+\newcommand\skidxletter[1]{\par\pagebreak[2]\medskip{\normalsize\bfseries\color{black!60}#1}\par\nopagebreak\smallskip}
+\hypersetup{colorlinks=true,linkcolor=Teal!70!black,urlcolor=Teal!70!black,citecolor=Teal!70!black}
+
+% commands teal, environments blue, keys and styles purple, presets and values of keys brown
+\definecolor{skcmd}{HTML}{00695C}
+\definecolor{skenv}{HTML}{1F5A8C}
+\definecolor{skkey}{HTML}{5B3A7E}
+\definecolor{skval}{HTML}{8A5A2B}
+% commands of LaTeX and TikZ in gray, as the environment tikzpicture
+\colorlet{xlst@colors@lst@command}{black!50}
+% numbers in the listings: a muted purple
+\definecolor{xlst@colors@lst@numbers}{HTML}{7A5A8C}
+
+% the layout of the other manuals: sections, lists, header and footer
+\setkomafont{disposition}{\rmfamily\bfseries}
+\setkomafont{subtitle}{\rmfamily}
+\setkomafont{descriptionlabel}{\normalfont}
+\setlist{nosep,itemsep=2pt,leftmargin=*}
+\newcommand\descbullet[1]{\llap{\textbullet\enspace}#1}
+\setlist[description]{format=\descbullet,labelindent=0pt,leftmargin=1.5em,itemsep=\medskipamount}
+\setlength\emergencystretch{3em}
+\usepackage[headsepline]{scrlayer-scrpage}
+\clearpairofpagestyles
+\ihead{\texttt{tikz-sankey}}
+\ohead{\hypersetup{urlcolor=.}\skrepo}
+\cfoot*{\pagemark}
+\setkomafont{pageheadfoot}{\normalfont\small\color{gray}}
+\RedeclareSectionCommand[tocbeforeskip=2pt]{section}
+% a heading needs room for some text after it
+\AddToHook{cmd/section/before}{\needspace{7\baselineskip}}
+\AddToHook{cmd/subsection/before}{\needspace{6\baselineskip}}
+
+% listings: every backslash starts a new command (also in \sankeyName\enspace); it is held back and
+% printed by what follows, so that the link of a command includes its backslash
+\newif\ifskbs
+\newcommand\skidstyle{\ifskbs\global\skbsfalse\skcsstyle\textbackslash\fi}
+% a command of this package in teal (bold if it makes a diagram), any other in gray
+\ExplSyntaxOn
+\makeatletter
+\str_new:N \l__skdoc_cs_str
+\cs_new_protected:Npn \skcsstyle
+   {
+      \str_set:Ne \l__skdoc_cs_str { \the \lst@token }
+      \str_if_eq:eeTF { \str_range:Nnn \l__skdoc_cs_str { 1 } { 6 } } { sankey }
+         {
+            \color{skcmd}
+            \cs_if_exist:cT { skdoc@core@ \l__skdoc_cs_str } { \bfseries }
+         }
+         { \color{black!50} }
+   }
+\makeatother
+\ExplSyntaxOff
+\makeatletter\lst@AddToHook{OutputOther}{\ifskbs\global\skbsfalse\textbackslash\fi}\makeatother
+\lstdefinestyle{sk}{language=lLatex,basicstyle=\ttfamily\small,columns=fullflexible,keepspaces,
+   breaklines=true,breakatwhitespace=true,breakindent=0pt,postbreak=\mbox{\tiny$\hookrightarrow$},
+   alsoother={\\\,},alsoletter={-},identifierstyle=\skidstyle,keywordstyle=[3]{},deletekeywords=[3]{tikzpicture},
+   emph={[2]tikzpicture},emphstyle={[2]\color{black!40}},
+   add to literate={\\}{{\ifskbs\textbackslash\fi\global\skbstrue\CodeLinkMarkBackslash}}1}
+% data files, shown as they are
+\lstdefinestyle{data}{basicstyle=\ttfamily\footnotesize,columns=fullflexible,keepspaces,codelink=false,aboveskip=0pt,belowskip=0pt}
+\lstMakeShortInline[style=sk,breaklines=false]|
+\tcbset{skbox/.style={colback=white,colframe=black!15,boxrule=.4pt,arc=2pt,left=4pt,right=4pt,top=3pt,bottom=3pt,
+   segmentation style={black!15},listing options={style=sk,basicstyle=\ttfamily\footnotesize}}}
+\newtcblisting{mermaidexample}{skbox,listing side text,righthand ratio=.52,fontupper=\sffamily,fontlower=\sffamily,valign=center,
+   listing options={style=sk,basicstyle=\ttfamily\footnotesize,alsoletter={:}}}
+\newtcblisting{example}{skbox,listing side text,righthand ratio=.52,fontupper=\sffamily,fontlower=\sffamily,valign=center}
+\newtcblisting{code}{skbox,listing only}
+% a data file and its name
+\newtcbinputlisting{\datafile}[1]{skbox,listing only,listing file={#1},title={\T{#1}},fonttitle=\footnotesize,
+   coltitle=black!70,colbacktitle=black!5,listing options={style=data}}
+% a listing with a name as its header, as for a data file
+\newtcblisting{namedcode}[1]{skbox,listing only,title={#1},fonttitle=\footnotesize,
+   coltitle=black!70,colbacktitle=black!5,listing options={style=data}}
+\newtcblisting{wideexample}{skbox,listing and text,breakable,fontupper=\sffamily,fontlower=\sffamily,halign upper=center,halign lower=center}
+\hfuzz=\maxdimen \hbadness=10000 \vfuzz=\maxdimen \vbadness=10000
+% every diagram of the manual fits its box
+\sankeySetup{width=\linewidth, height=28mm}
+
+% code-link: one group for the commands
+\CodeLinkStyle{api}{\color{skcmd}}
+\CodeLinkGroup{api}{prefix=api:,style=api}
+% the commands that make a diagram are bold, those that read it or format numbers are not
+\CodeLinkStyle{core}{\color{skcmd}\bfseries}
+\CodeLinkGroup{core}{prefix=api:,style=core}
+\CodeLinkStyle{env}{\color{skenv}}
+\CodeLinkGroup{env}{prefix=env:,style=env}
+\CodeLinkStyle{key}{\color{skkey}}
+\CodeLinkGroup{key}{prefix=key:,style=key}
+\CodeLinkStyle{val}{\color{skval}}
+\CodeLinkGroup{val}{prefix=val:,style=val}
+
+\let\T\texttt
+\newcommand\meta[1]{\ensuremath{\langle}\textit{#1}\ensuremath{\rangle}}
+\newcommand\marg[1]{\T{\{}\meta{#1}\T{\}}}
+\newcommand\oarg[1]{\T{[}\meta{#1}\T{]}}
+\newcommand\skrepo{\href{https://github.com/EagleoutIce/tikz-sankey}{\T{github.com/EagleoutIce/tikz-sankey}}}
+\ExplSyntaxOn
+\clist_const:Nn \c__skdoc_core_clist
+   {
+      sankeyDiagram, sankeyFlows, sankeyFlow, sankeyAlluvium, sankeyNode, sankeyNodes, sankeySetup,
+      sankeyCSV, sankeyMermaid, sankeyMermaidFile, sankeyGroup, sankeyColumn, sankeyColumnTitle,
+      sankeyStart, sankeyRoute, sankeySplit, sankeyMerge
+   }
+\clist_map_inline:Nn \c__skdoc_core_clist { \cs_new:cpn { skdoc@core@#1 } { } }
+\cs_new:Npn \__skdoc_group:n #1 { \cs_if_exist:cTF { skdoc@core@#1 } { core } { api } }
+\NewDocumentCommand \cmd { m } { \use:e { \exp_not:N \CodeLinkRef [ group = \__skdoc_group:n {#1} , command ] } {#1} }
+\ExplSyntaxOff
+\ExplSyntaxOn
+\NewDocumentCommand \opt { m }
+   { \hyperref[key:#1]{ \T{ \prop_if_in:NnTF \c__sankey_presets_prop {#1} { \color{skval} } { \color{skkey} } #1 } } }
+\ExplSyntaxOff
+% an outside link, in the muted color of all links
+\newcommand\sklink[2]{\href{#1}{\textcolor{Teal!70!black}{#2}}}
+\newcommand\envref[1]{\hyperref[env:#1]{\T{\color{skenv}#1}}}
+\ExplSyntaxOn
+% the index sorts commands without their common start, so \sankeyFlow sits under F
+\cs_new:Npn \__skdoc_sort:n #1
+   { \str_lowercase:f { \str_if_eq:eeTF { \str_range:nnn {#1} { 1 } { 6 } } { sankey } { \str_range:nnn {#1} { 7 } { -1 } } {#1} } }
+\NewDocumentCommand \api { m }
+   {
+      \use:e { \exp_not:N \CodeLinkAnchor [ group = \__skdoc_group:n {#1} , command ] } {#1}
+      \T{ \color{skcmd} \str_if_eq:eeT { \__skdoc_group:n {#1} } { core } { \bfseries } \textbackslash#1 }
+      \use:e
+         {
+            \exp_not:N \index
+               {
+                  \__skdoc_sort:n {#1} @ \exp_not:N \texttt { \exp_not:N \color{skcmd}
+                  \str_if_eq:eeT { \__skdoc_group:n {#1} } { core } { \exp_not:N \bfseries }
+                  \exp_not:N \textbackslash #1 } | hyperpage
+               }
+         }
+   }
+\NewDocumentCommand \env { m }
+   {
+      \phantomsection\label{env:#1}\T{\color{skenv}#1}
+      \CodeLinkRegister[group=env,label=env:#1]{#1}
+      \index{#1@\texttt{\color{skenv}#1}~\textcolor{gray}{(environment)}|hyperpage}
+   }
+% the defaults, read from the package itself
+\prop_new:N \g_skdoc_defaults_prop
+\exp_args:NNV \prop_gset_from_keyval:Nn \g_skdoc_defaults_prop \c__sankey_defaults_tl
+\tl_new:N \l__skdoc_tl
+% the text of all listings of this manual: a key of several words is linked in the listings
+% only if it occurs in one (code-link matches such keys character by character, which is slow)
+\str_new:N \g__skdoc_listings_str
+\bool_new:N \l__skdoc_inlisting_bool
+\ior_new:N \g__skdoc_ior
+\ior_open:Nn \g__skdoc_ior { \jobname.tex }
+\ior_str_map_inline:Nn \g__skdoc_ior
+   {
+      \regex_match:nnT { \\end\{(example|code|wideexample)\} } {#1} { \bool_set_false:N \l__skdoc_inlisting_bool }
+      \bool_if:NT \l__skdoc_inlisting_bool { \str_gput_right:Nn \g__skdoc_listings_str { #1 ~ } }
+      \regex_match:nnT { \\begin\{(example|code|wideexample)\} } {#1} { \bool_set_true:N \l__skdoc_inlisting_bool }
+   }
+\ior_close:N \g__skdoc_ior
+\cs_new_protected:Npn \__skdoc_target:n #1 { \__skdoc_target:nn { key } {#1} }
+\cs_new_protected:Npn \__skdoc_target:nn #1 #2
+   {
+      \cs_if_exist:cF { skkey@#2 }
+         {
+            \cs_gset:cpn { skkey@#2 } { } \phantomsection \label { key:#2 }
+            \tl_if_in:nnTF {#2} { ~ }
+               { \str_if_in:NnT \g__skdoc_listings_str {#2} { \CodeLinkRegister[group=#1,label=key:#2]{#2} } }
+               { \CodeLinkRegister[group=#1,label=key:#2]{#2} }
+         }
+   }
+% values of keys that link to their key, and the fields of the info commands
+\AtBeginDocument
+   {
+      \clist_map_inline:nn
+         {
+            gradient/flow~color, forward/flow~color, backward/flow~color, source/flow~color, target/flow~color,
+            justify/layout, decreasing/node~order, increasing/node~order, sorted/flow~order
+         }
+         { \__skdoc_value:w #1 \q_stop }
+      \clist_map_inline:nn { column, value, in, out, color, top, bottom, height, start, end }
+         { \use:e { \exp_not:N \CodeLinkRegister [ group = key , label = info:node ] { \c_left_brace_str #1 \c_right_brace_str } } }
+   }
+\cs_new_protected:Npn \__skdoc_value:w #1 / #2 \q_stop { \CodeLinkRegister[group=val,label=key:#2]{#1} }
+% \key{name}{value}<default>: documents a key; <@phrase> reads `by default phrase'. Without it, its default is the
+% one of the package, if it has one. A key of several kinds has one link target and one index entry.
+\NewDocumentCommand \key { m m d<> }
+   {
+      \__skdoc_target:n {#1}
+      \T{\bfseries\color{skkey}#1}
+      \index{#1@\texttt{\bfseries\color{skkey}#1}~\textcolor{gray}{(key)}|hyperpage}
+      \tl_if_blank:nF {#2} { \T{=}#2 }
+      \IfValueTF {#3}
+         {
+            \tl_if_eq:nnF {#3} { - }
+               {
+                  \tl_if_head_eq_charcode:nNTF {#3} @
+                     { \,\textcolor{gray}{\small(by~default~\use_none:n #3)} }
+                     { \,\textcolor{gray}{\small(default~#3)} }
+               }
+         }
+         {
+            \prop_get:NnNT \g_skdoc_defaults_prop {#1} \l__skdoc_tl
+               {
+                  \__skdoc_clean:N \l__skdoc_tl
+                  \,\textcolor{gray}{\small(default~\tl_if_blank:VTF \l__skdoc_tl { empty } { \T{\l__skdoc_tl} })}
+               }
+         }
+   }
+% a value as the package writes it, without the spaces \tl_to_str puts after commands
+\cs_new_protected:Npn \__skdoc_clean:N #1
+   {
+      \tl_set:Ne #1 { \tl_to_str:V #1 }
+      \regex_replace_all:nnN { \s+ ( [\,\)\}] | \Z ) } { \1 } #1
+   }
+\NewDocumentCommand \skstyle { m }
+   {
+      \__skdoc_target:n {#1}
+      \T{\bfseries\color{skkey}#1}
+      \index{#1@\texttt{\bfseries\color{skkey}#1}~\textcolor{gray}{(style)}|hyperpage}
+      \prop_get:NnNT \g_skdoc_defaults_prop { #1/.style } \l__skdoc_tl
+         {
+            \__skdoc_clean:N \l__skdoc_tl
+            \,\textcolor{gray}{\small(\tl_if_blank:VTF \l__skdoc_tl { empty } { \T{\l__skdoc_tl} })}
+         }
+   }
+% a preset, and the keys it sets as the package defines them
+\NewDocumentCommand \preset { m }
+   {
+      \__skdoc_target:nn { val } {#1}
+      \T{\bfseries\color{skval}#1}
+      \index{#1@\texttt{\bfseries\color{skval}#1}~\textcolor{gray}{(preset)}|hyperpage}
+   }
+\NewDocumentCommand \skpresetkeys { m }
+   {
+      \prop_get:NnNT \c__sankey_presets_prop {#1} \l__skdoc_tl
+         {
+            \__skdoc_clean:N \l__skdoc_tl
+            \regex_replace_all:nnN { , } { ,\ } \l__skdoc_tl
+            \par{\footnotesize\color{black!60}\ttfamily\raggedright \l__skdoc_tl \par}
+         }
+   }
+% the presets of the package, each with an example; the list comes from the package
+\prop_const_from_keyval:Nn \c_skdoc_preset_text_prop
+   {
+      classic = { the~look~of~\sklink{https://github.com/d3/d3-sankey}{d3-sankey}:~centered~columns~with~wide~gaps,~flows~in~the~color~of~their~source },
+      alluvial = { the~look~of~\sklink{https://corybrunson.github.io/ggalluvial/}{ggalluvial}:~gray~strata~as~wide~as~their~labels },
+      energy = { thin~dark~nodes,~wide~gaps,~flows~in~the~color~of~their~target },
+      mermaid = { the~look~of~\sklink{https://mermaid.js.org/syntax/sankey.html}{Mermaid},~used~for~its~diagrams },
+      bucket~bars = { bars~of~buckets~(Section~\ref{sec:buckets}) },
+      black~and~white = { no~colors:~black~nodes,~gray~flows~and~serif~labels },
+      values = { value~labels~with~the~values },
+      percentages = { value~labels~with~the~shares },
+   }
+\tl_const:Nn \c_skdoc_flows_tl
+   { allowance -> candy : 5, allowance -> savings : 4, birthday -> savings : 6, birthday -> comics : 2, savings -> bike : 8 }
+\tl_const:Nn \c_skdoc_buckets_tl
+   { import@1 -> clean@2 : 1, import@2 -> clean@2 : 1, clean@2 -> model@5 : 1, clean@4 -> model@3 : .5, import@4 -> import@6 : .6 }
+\NewDocumentCommand \presetgallery { }
+   {
+      \begin{tcolorbox}[skbox, sidebyside, righthand~ratio=.52, valign=center, fontlower=\sffamily, before~skip=2pt, after~skip=6pt]
+         \textbf{no~preset}\ the~defaults~of~the~package,~for~comparison. \par
+         \smallskip{\footnotesize\T{\color{skcmd}\bfseries\textbackslash sankeyDiagram}\T{\{\meta{flows~A}\}}}
+         \tcblower
+         \use:e { \exp_not:N \sankeyDiagram [ height = 24mm ] { \exp_not:V \c_skdoc_flows_tl } }
+      \end{tcolorbox}
+      \prop_map_inline:Nn \c__sankey_presets_prop { \__skdoc_preset_example:n {##1} }
+   }
+\cs_new_protected:Npn \__skdoc_preset_example:n #1
+   {
+      \tl_set:Ne \l__skdoc_tl { \str_if_eq:nnTF {#1} { bucket~bars } { \exp_not:V \c_skdoc_buckets_tl } { \exp_not:V \c_skdoc_flows_tl } }
+      \begin{tcolorbox}[skbox, sidebyside, righthand~ratio=.52, valign=center, fontlower=\sffamily, before~skip=2pt, after~skip=6pt]
+         \preset{#1}\ \prop_item:Nn \c_skdoc_preset_text_prop {#1}. \skpresetkeys{#1}
+         \par\smallskip{\footnotesize\T{\color{skcmd}\bfseries\textbackslash sankeyDiagram}\T{[#1]\{\meta{flows~\str_if_eq:nnTF {#1} { bucket~bars } { B } { A }}\}}}
+         \tcblower
+         \use:e { \exp_not:N \sankeyDiagram [ #1 , height = 24mm ] { \exp_not:V \l__skdoc_tl } }
+      \end{tcolorbox}
+   }
+\NewDocumentCommand \palettebox { }
+   {
+      \prop_get:NnN \g_skdoc_defaults_prop { palette } \l__skdoc_tl
+      \exp_args:NV \clist_map_inline:nn \l__skdoc_tl
+         { \mbox { \tikz\fill[##1] (0,0) rectangle (3mm,3mm); \,\T{##1} } \quad }
+   }
+\seq_new:N \l__skdoc_seq
+\NewDocumentCommand \choices { m }
+   {
+      \seq_set_from_clist:Nn \l__skdoc_seq {#1}
+      \seq_set_map:NNn \l__skdoc_seq \l__skdoc_seq { \exp_not:n { \textcolor{skval}{##1} } }
+      \T{ \seq_use:Nn \l__skdoc_seq { \textbar } }
+   }
+\ExplSyntaxOff
+
+\title{\T{tikz-sankey}}
+\subtitle{\small\skrepo}
+\author{Florian Sihler\thanks{Released under the \href{https://opensource.org/licenses/MIT}{MIT License}.}}
+\makeatletter
+\long\def\sk@parsever#1 version #2 #3\relax{\def\skdocdate{#1}\def\skdocversion{#2}}
+\expandafter\expandafter\expandafter\sk@parsever\csname ver@tikz-sankey.sty\endcsname\relax
+\makeatother
+\date{Version \skdocversion{} \textendash{} \skdocdate}
+
+\deftocheading{toc}{}
+% the colors of the examples
+\definecolor{bean}{HTML}{6F4E37}
+\definecolor{crema}{HTML}{D9A066}
+\definecolor{spill}{HTML}{C0392B}
+% the data file of the CSV example
+\begin{filecontents*}[overwrite]{snacks.csv}
+from,to,value,group
+fridge,"snacks, salty",12,night
+fridge,snacks sweet,7.5,day
+"snacks, salty",couch,10,night
+snacks sweet,couch,6,day
+\end{filecontents*}
+\begin{document}
+\maketitle
+\thispagestyle{empty}
+
+\noindent\T{tikz-sankey} draws flows between nodes, each flow as wide as its value. You list the flows. The package computes the columns, stacks and sizes the nodes, orders the bands, and places the labels so that they do not collide:
+\begin{example}
+\sankeyDiagram[
+   label={\sankeyName\space\sankeyValue}]{
+   pizza -> dinner : 4,
+   pizza -> fridge : 6,
+   cake -> fridge : 3,
+   cake -> neighbour : 2,
+   fridge -> breakfast : 5,
+   fridge -> bin : 4
+}
+\end{example}
+The preset \opt{black and white} draws without colors, in black and gray with serif labels:
+\begin{example}
+\sankeyDiagram[black and white]{
+   books -> read : 5,
+   books -> lent : 3,
+   books -> shelf : 2,
+   books -> lost : 2,
+   read -> kept : 1,
+   read -> sold : 4
+}
+\end{example}
+Flows can also come from loops, CSV files and Mermaid. Diagrams that follow no columns are drawn as routes (Section~\ref{sec:routes}). Nodes, labels and routes are named Ti\emph{k}Z nodes.
+\medskip
+\setcounter{tocdepth}{\sectiontocdepth}
+\tableofcontents
+\bigskip
+
+\section{Diagrams}\label{sec:diagrams}
+A diagram consists of nodes and of flows between them. The flows are given. The nodes follow from them and need a declaration only to change how they look.
+\begin{description}
+\item[\T{\textbackslash begin\{}\env{sankey}\T{\}}\oarg{keys} \dots{} \T{\textbackslash end\{}\envref{sankey}\T{\}}] collects nodes and flows inside a |tikzpicture| and draws the diagram at its end. The picture can draw onto it afterwards (Section~\ref{sec:annotate}).
+\item[\T{\textbackslash begin\{}\env{sankeypicture}\T{\}}\oarg{keys} \dots{} \T{\textbackslash end\{}\envref{sankeypicture}\T{\}}] a |tikzpicture| (style \skstyle{every picture}) with a \T{sankey} environment inside.
+\item[\api{sankeyDiagram}\oarg{keys}\marg{flows}] a \T{sankeypicture} of flows as for \cmd{sankeyFlows}.
+\item[\api{sankeySetup}\marg{keys}] sets keys for the following diagrams in the current group.
+\end{description}
+A key with the values \T{true} and \T{false} given alone means \T{true}.
+
+\subsection{Flows}
+\begin{description}
+\item[\api{sankeyFlows}\oarg{keys}\marg{list}] flows separated by commas, each \T{\meta{from} -> \meta{to} : \meta{value}}, optionally followed by \T{[\meta{keys}]}. A node may carry keys in brackets after its name, \T{\meta{name}[\meta{node keys}]}, as \cmd{sankeyNode} would give them, for example |salt[color=red]|. A number in the brackets is its \opt{column} (Section~\ref{sec:layout}). A chain \T{a -> b -> c : 5} is an \emph{alluvium}: two flows with the same value and keys. The keys in front apply to every flow of the list. Braces keep commas, colons and arrows inside a name, as in \T{\{a, b\} -> c : 1}, macros in names and values are expanded, and a comma after the last flow does no harm.
+\item[\api{sankeyFlow}\oarg{keys}\marg{from}\marg{to}\marg{value}] one flow, for example inside a |\foreach|. The value is a floating point expression. A flow of value 0 is laid out but not drawn. A negative one is dropped with a warning.
+\item[\api{sankeyAlluvium}\oarg{keys}\marg{nodes}\marg{value}] a chain, the nodes given as a list.
+\end{description}
+\begin{example}
+\begin{tikzpicture}
+\begin{sankey}[flow color=source]
+   \sankeyFlow{cat}{sofa}{4}
+   \sankeyFlow[color=spill]{cat}{bowl}{2}
+   \sankeyFlows{
+      sofa -> nap : 3,
+      bowl -> nap -> dream : 1
+   }
+   \sankeyAlluvium{cat, bowl, dream}{1}
+\end{sankey}
+\end{tikzpicture}
+\end{example}
+Keys of a flow:
+\begin{description}
+\item[\key{group}{\meta{name}}] its group (Section~\ref{sec:colors}), declared if unknown.
+\item[\key{color}{\meta{color}}] one color for the flow, overriding \opt{flow color}.
+\item[\key{from color}{\meta{color}}<@the color of its source>, \key{to color}{\meta{color}}<@the color of its target>] the ends of its gradient.
+\item[\key{tint}{\meta{0--100}}<@the value of \opt{flow tint}>, \key{opacity}{\meta{0--1}}<@the value of \opt{flow opacity}>] the tint and the opacity of this flow.
+\item[\key{fade}{\choices{none,in,out,both}}<@the value of \opt{flow fade}>, \key{curvature}{\meta{0--1}}<@the value of \opt{curvature}>] the fading and the curvature of this flow.
+\item[\key{style}{\meta{TikZ keys}}] added to its path.
+\end{description}
+
+\subsection{Nodes}
+\begin{description}
+\item[\api{sankeyNode}\oarg{keys}\marg{name}] declares a node, or adds keys to one.
+\item[\api{sankeyNodes}\oarg{keys}\marg{list}] declares nodes with the same keys, each \T{\meta{name} = \meta{text}} or \T{\meta{name}}.
+\end{description}
+Keys of a node:
+\begin{description}
+\item[\key{text}{\meta{text}}<@its name up to an \T{@}>] what \cmd{sankeyName} shows.
+\item[\key{column}{\meta{integer}}<@from the flows>] its column, counted from 0 (Section~\ref{sec:layout}).
+\item[\key{value}{\meta{expression}}<@the larger of its in- and outflow>] its size. A value smaller than the flows gives a warning and is raised.
+\item[\key{color}{\meta{color}}] its color, which its flows take as well.
+\item[\key{label}{\meta{text}}<->, \key{value label}{\meta{text}}<->] its labels, overriding the templates (Section~\ref{sec:labels}).
+\item[\key{label position}{\meta{side}}, \key{value label position}{\meta{side}}] where they go.
+\item[\key{label style}{\meta{TikZ keys}}, \key{value label style}{\meta{TikZ keys}}, \key{style}{\meta{TikZ keys}}] added to the labels and the node.
+\item[\key{skip}{\meta{length}}<0pt>] extra space before the node, moving the nodes after it.
+\item[\key{shift}{\meta{length}}<0pt>] moves the node alone along its column.
+\item[\key{at}{\meta{length}}<@where its column starts>] where the node starts along the flows.
+\end{description}
+Names, values and colors are expanded when they are given. Labels are not, so a |\foreach| variable in a label needs |label/.expanded=\x|.
+Below, \T{wallet} is larger than its flows, \T{tea} and \T{cake} share a color, \T{tea} shows another text, and \T{cake} keeps a gap before it and has a bold label.
+\begin{example}
+\begin{tikzpicture}
+\begin{sankey}
+   \sankeyNode[value=10,
+      label={wallet 10}]{wallet}
+   \sankeyNodes[color=sankey-6]{
+      tea = {green tea}, cake}
+   \sankeyNode[skip=4mm,
+      label style={font=\bfseries}]{cake}
+   \sankeyFlows{
+      wallet -> tea : 3,
+      wallet -> cake : 4
+   }
+\end{sankey}
+\end{tikzpicture}
+\end{example}
+A name may end in \T{@\meta{anything}}: \T{happy@mon} and \T{happy@tue} are two nodes, both shown as \T{happy}. This puts the same category into several columns, and since nodes of the same text share their color, \T{happy} has the same color in each of them.
+\begin{example}
+\sankeyDiagram[column titles={Mon, Tue, Wed}]{
+   happy@mon -> happy@tue : 5,
+   happy@mon -> grumpy@tue : 2,
+   grumpy@mon -> grumpy@tue : 3,
+   grumpy@mon -> happy@tue : 1,
+   happy@tue -> happy@wed : 4,
+   happy@tue -> sleepy@wed : 2,
+   grumpy@tue -> sleepy@wed : 5
+}
+\end{example}
+
+\subsection{Data from files}\label{sec:data}
+\begin{description}
+\item[\api{sankeyCSV}\oarg{keys}\marg{file}] reads flows from a CSV file, into a \T{sankey} environment or as a \T{sankeypicture} of its own. Fields in double quotes may contain the separator. \T{""} in them is one quote. Lines with fewer than three fields or no number as value are skipped with a warning.
+\item[\key{csv columns}{\meta{list}}] the meaning of the fields: \T{from}, \T{to}, \T{value}, \T{group}, \T{color}. Other names are ignored.
+\item[\key{csv separator}{\meta{character}}, \key{csv header}{\choices{auto,true,false}}] \T{auto} treats the first line as a header if its value is not a number.
+\item[\key{group node color}{\V{auto}\textbar\meta{color}}] a color for all nodes when flows have groups, so that only the groups are colored.
+\end{description}
+Flows with a group take the color of their group, and a legend lists the groups.
+\datafile{snacks.csv}
+\begin{example}
+\sankeyCSV[values, group colors=
+   {night=black!55, day=crema}]{snacks.csv}
+\end{example}
+
+\subsection{Mermaid}
+Mermaid writes a Sankey diagram as \T{sankey-beta} followed by CSV lines \T{source,target,value}. The same text works here:
+\begin{description}
+\item[\T{\textbackslash begin\{}\env{sankeymermaid}\T{\}}\oarg{keys} \dots{} \T{\textbackslash end\{}\envref{sankeymermaid}\T{\}}] the lines, verbatim.
+\item[\api{sankeyMermaid}\oarg{keys}\marg{lines}] the same as a command. It reads its argument verbatim, so it cannot be inside the argument of another command.
+\item[\api{sankeyMermaidFile}\oarg{keys}\marg{file}] the lines from a file, such as a \T{.mmd} file.
+\end{description}
+A front matter block, between two lines \T{-{}-{}-}, may set \T{showValues} (the key \key{show values}{\choices{true,false}}, which puts the value under the name), \T{linkColor} (\T{source}, \T{target}, \T{gradient} or a color), \T{nodeAlignment} (\T{justify}, \T{left}, \T{right}, \T{center}), \T{prefix} and \T{suffix}. Lines starting with \T{\%\%} are comments. The diagram uses the preset \opt{mermaid}. Keys given to the command override its settings.
+\begin{mermaidexample}
+\begin{sankeymermaid}
+---
+config:
+  sankey:
+    suffix: " l"
+---
+sankey-beta
+%% where the rain on the roof goes
+Roof,Barrel,40
+Roof,Gutter,25
+Barrel,Tomatoes,30
+Barrel,Overflow,10
+Gutter,Lawn,25
+\end{sankeymermaid}
+\end{mermaidexample}
+
+\section{Layout and gaps}\label{sec:layout}
+A node without a \opt{column} goes one column right of the farthest node that flows into it. A node without inflow goes to column 0.
+\begin{description}
+\item[\key{layout}{\choices{left,right,center,justify}}] \T{right} moves each node as far right as its outflows allow. \T{center} moves nodes without inflow next to their first target. \T{justify} moves nodes without outflow to the last column.
+\item[\key{height}{\meta{length}}] the height of the tallest column, gaps included.
+\item[\key{unit}{\meta{length}}] the length of one unit of value, instead of \opt{height}, so that diagrams can be compared.
+\item[\key{width}{\meta{length}}] the width of the diagram with its outer labels and legend. Each gap gets the room its labels need, and the gaps share the rest evenly. Only for \T{right} and \T{left}.
+\item[\key{column sep}{\meta{length}\textbar\V{auto}}] the distance between the starts of two columns. \T{auto} makes each gap as wide as the labels on both sides plus \key{flow room}{\meta{length}}, and at least \key{min column sep}{\meta{length}}.
+\item[\key{columns at}{\meta{list of lengths}}] the starts of the columns, one by one.
+\item[\key{node width}{\meta{length}\textbar\V{auto}}] the size of a node along the flows. \T{auto} fits the labels inside, but at least \key{min node width}{\meta{length}}.
+\item[\key{node sep}{\meta{length}}, \key{gap}{\meta{length}}] the gap between two nodes of a column, also called \T{gap}.
+\item[\key{min pitch}{\meta{length}}] the least distance between the starts of two nodes of a column, which keeps room for labels of thin nodes.
+\item[\key{align}{\choices{top,center,bottom}}] how columns of different heights line up.
+\item[\key{node order}{\choices{declaration,decreasing,increasing}}] the order of the nodes in a column.
+\item[\key{flow order}{\choices{sorted,group,declaration}}] the order of the flows at a node: \T{sorted} by the position of their other end, then by group. \T{group} sorts by group first and keeps the bands of a group together.
+\item[\key{port align}{\choices{top,center}}] where the flows sit on a node larger than their sum.
+\item[\key{direction}{\choices{right,down,left,up}}] where the flows go. Labels, gradients, fadings and column titles turn with them.
+\item[\key{relax}{\meta{rounds}}] rounds in which every node moves towards the weighted middle of its linked nodes, from left and right in turn, keeping its order in the column. \T{0} keeps the stacking of \opt{align}.
+\item[\key{long flows}{\choices{route,direct}}] \T{route} leads a flow that skips columns beside the nodes there, not through them. \T{direct} draws it as one band.
+\item[\key{label room}{\choices{true,false}}] whether a node takes the room its labels need, so that each label stays next to its node. The flows get up to 30\,\% thinner for it, beyond that the diagram grows taller than \opt{height}.
+\item[\key{show empty}{\choices{true,false}}] whether nodes of value 0 keep their place.
+\item[\key{auto nodes}{\choices{true,false}}] whether flows may declare their nodes.
+\end{description}
+With \T{layout=right}, \T{butter} goes right before \T{bread}, the only node it flows to:
+\begin{example}
+\sankeyDiagram[layout=right, gap=4mm]{
+   flour -> dough -> bread : 3,
+   butter -> bread : 1
+}
+\end{example}
+To place a single node elsewhere, give it a column: in a list of flows, \T{\meta{name}[\meta{column}]} is short for \T{\meta{name}[column=\meta{column}]}, and the brackets take any other key of a node as well, such as |butter[0, color=crema]|. The same keys can be given with \cmd{sankeyNode}.
+\begin{example}
+\sankeyDiagram[layout=right, gap=4mm]{
+   flour -> dough -> bread : 3,
+   butter[0, color=crema] -> bread : 1
+}
+\end{example}
+\begin{example}
+\sankeyDiagram[direction=down,
+   align=center, layout=justify,
+   column sep=12mm]{
+   alarm -> snooze : 3,
+   alarm -> up : 2,
+   snooze -> late : 2,
+   snooze -> up : 1,
+   up -> late : 2
+}
+\end{example}
+
+\section{Colors}\label{sec:colors}
+\begin{description}
+\item[\key{palette}{\meta{list of colors}}] the colors of the nodes. The default colors, by Okabe and Ito, stay distinct for every kind of color vision:\\
+\palettebox
+\item[\key{node color}{\V{auto}\textbar\V{column}\textbar\meta{color}}] \T{auto} gives nodes of the same text the same color, the next one of the palette. \T{column} gives each column one color of the palette and its nodes shades of it, from the full color down to \key{column shades}{\meta{0--100}} percent. A color paints every node.
+\item[\key{node colors}{\meta{name}=\meta{color}, \dots}] colors for some nodes.
+\item[\key{group colors}{\meta{name}=\meta{color}, \dots}] declares groups with their colors.
+\item[\key{group palette}{\meta{list of colors}}<@the colors of \opt{palette}>] colors for groups without one.
+\item[\api{sankeyGroup}\oarg{keys}\marg{name}] declares a group. Its keys are \key{color}{\meta{color}} and \key{label}{\meta{text}}<@the name of the group> for the legend.
+\end{description}
+Below, \opt{node colors} gives \T{tea} its color, and the flows take the colors of their groups. The group \T{hot} has its own color, \T{iced} and \T{fresh} take the colors of \opt{group palette} in turn.
+\begin{example}
+\sankeyDiagram[flow color=group,
+   node colors={tea=sankey-3},
+   group colors={hot=sankey-6},
+   group palette={sankey-2, sankey-5}]{
+   tea -> morning : 3 [group=hot],
+   tea -> evening : 2 [group=iced],
+   juice -> morning : 2 [group=iced],
+   juice -> evening : 1 [group=fresh]
+}
+\end{example}
+\begin{description}
+\item[\key{flow color}{\meta{mode}\textbar\meta{color}}] how flows are painted:
+\begin{center}\small
+\begin{tabular}{@{}lll@{}}\toprule
+mode & a flow is painted & in ggalluvial\\\midrule
+\T{gradient} & from the color of its source to that of its target & --\\
+\T{source}, \T{forward} & in the color of its source & \T{aes.flow = "forward"}\\
+\T{target}, \T{backward} & in the color of its target & \T{aes.flow = "backward"}\\
+\T{group} & in the color of its group, else as \T{source} & \T{aes(fill = group)}\\
+\T{auto} & as \T{group} if it has a group, else as \T{gradient} & --\\
+\meta{color} & in this color & \T{fill = "..."}\\\bottomrule
+\end{tabular}
+\end{center}
+\item[\key{flow tint}{\meta{0--100}}] the share of the color in a flow, mixed with white.
+\item[\key{flow opacity}{\meta{0--1}}] the opacity of the flows.
+\item[\key{flow fade}{\choices{none,in,out,both}}] flows fade in, out, or both, along their direction.
+\item[\key{curvature}{\meta{0--1}}] how far the control points reach into the gap. \T{0} draws straight bands.
+\item[\key{flow outline}{\V{none}\textbar\V{auto}\textbar\meta{color}}] a thin line along both edges of every flow. \T{auto} draws it in a darker shade of the flow.
+\item[\key{seam}{\meta{length}}] how far a flow reaches under its nodes and an opaque flow over its neighbour, which hides thin lines between them. \T{0pt} turns it off.
+\item[\key{node rounding}{\meta{length}}] rounds all corners of the nodes.
+\item[\key{outer rounding}{\meta{length}}] rounds the corners on the side of a node that no flow meets: the left side of a node nothing flows into, the right side of a node nothing leaves. \T{0pt} turns it off.
+\item[\skstyle{every first node}, \skstyle{every last node}] styles for the nodes nothing flows into and the nodes nothing leaves.
+\end{description}
+\begin{example}
+\sankeyDiagram[node color=column, values]{
+   week -> lazy : 118,
+   week -> busy : 31,
+   week -> hungry : 19,
+   lazy -> sleeping : 96,
+   lazy -> loafing : 22,
+   busy -> judging : 17,
+   busy -> knocking : 14,
+   hungry -> eating : 7,
+   hungry -> begging : 12
+}
+\end{example}
+\begin{example}
+\sankeyDiagram[flow color=target,
+   flow fade=in, flow tint=100,
+   curvature=.3]{
+   sun -> nap : 2,
+   sun -> tan : 1,
+   rain -> nap : 2
+}
+\end{example}
+
+\section{Labels and numbers}\label{sec:labels}
+Each node has a \emph{label} and a \emph{value label}. Both are templates: the keys \opt{label} and \opt{value label} hold text, typeset once for each node, in which these macros stand for the node at hand. Their numbers are formatted as Section~\ref{sec:numbers} describes.
+\begin{description}
+\item[\api{sankeyName}] its text: the key \opt{text} of the node, else its name up to an \T{@}.
+\item[\api{sankeyValue}] its value (the key \opt{value}, else the larger of in- and outflow), formatted as \cmd{sankeyNumber} formats numbers.
+\item[\api{sankeyPercentOf}\marg{node}] its value in percent of the value of \meta{node}, formatted as \cmd{sankeyPercent} formats shares.
+\item[\api{sankeyShare}\oarg{column}] its value in percent of the sum of a column (\cmd{sankeyColumnTotal}), by default its own, formatted as \cmd{sankeyPercent} formats shares.
+\end{description}
+\begin{description}
+\item[\key{label}{\meta{text}}, \key{value label}{\meta{text}}] the templates. Empty labels are not drawn. The presets \opt{values} and \opt{percentages} set the value label.
+\item[\key{label position}{\meta{side}}, \key{value label position}{\meta{side}}] \T{before} or \T{after} the node, \T{inside} it, or \T{none}. \T{left}, \T{right}, \T{above} and \T{below} name \T{before} or \T{after} for the direction at hand. \T{auto} puts labels of the first column before the nodes and all others after them, and value labels on the other side.
+\item[\key{label distance}{\meta{length}}] from a node to its label.
+\item[\key{label sep}{\meta{length}}] the least gap between two labels on one side of a column. A label sits at the middle of its node and moves only as far as the label before it requires.
+\item[\key{label backdrop}{\choices{true,false}}] a light box (style \skstyle{every backdrop}) behind labels outside the nodes, for readability over flows.
+\item[\key{leader threshold}{\meta{length}\textbar\V{none}}] a label moved farther is joined to its node by a line (style \skstyle{every leader}).
+\item[\key{column titles}{\meta{list}}] titles above the columns, on one baseline (style \skstyle{every column title}), \key{column title distance}{\meta{length}} away. \api{sankeyColumnTitle}\oarg{TikZ keys}\marg{column}\marg{text} adds one.
+\item[\key{legend}{\choices{auto,none,right,below,above,left}}] a legend of the groups, or of the nodes with \key{legend for}{\choices{groups,nodes}} (styles \skstyle{every legend} and \skstyle{every swatch} for its color boxes). \T{auto} draws one at the right if there are groups.
+\item[\key{name prefix}{\meta{text}}] the start of the names of the Ti\emph{k}Z nodes of a diagram.
+\end{description}
+Styles of the labels: \skstyle{every label}, \skstyle{every value label}, \skstyle{every inside label}.
+\begin{example}
+\sankeyDiagram[percentages,
+   label position=right,
+   value label position=left,
+   leader threshold=1mm, min pitch=2mm]{
+   mail -> spam : 12,
+   mail -> bills : 1,
+   mail -> friends : 1,
+   mail -> ads : 1
+}
+\end{example}
+
+\subsection{Numbers}\label{sec:numbers}
+All numbers go through two macros, which can also be used anywhere in a document. To change how values look, change their keys:
+\begin{description}
+\item[\api{sankeyNumber}\marg{expression}] evaluates the expression, rounds it to \key{precision}{\meta{digits}} decimals, typesets it with \key{number format}{\meta{code with \#1}}<\T{\#1}> (\T{\#1} is the rounded number), and puts \key{value prefix}{\meta{text}} before and \key{value suffix}{\meta{text}} after it. \key{value unit}{\meta{unit}} is a suffix after a thin space, as in \T{value unit=kg}.
+\item[\api{sankeyPercent}\marg{part}\marg{whole}] computes \T{100*\meta{part}/\meta{whole}}: a share in percent, rounded to \key{percent precision}{\meta{digits}} decimals, formatted by \key{percent format}{\meta{code with \#1}}<\T{\#1\textbackslash,\textbackslash\%}>. A whole of 0 gives \T{--}.
+\item[\api{sankeyValueOf}\marg{node}] the formatted value of a node.
+\end{description}
+The key \key{siunitx}{}<-> formats numbers with |\num| and shares with |\qty{..}{\percent}|, following the settings of \T{siunitx}, which you load yourself.
+\begin{example}
+\sisetup{group-minimum-digits=4,
+   round-mode=places, round-precision=1}
+\sankeyDiagram[siunitx, values,
+   value unit={\unit{\kilo\gram}}]{
+   cookies -> me : 1234.56,
+   cookies -> dog : 210.04
+}
+\end{example}
+
+\section{Presets}\label{sec:presets}
+A preset is a style that sets the keys listed with it. Keys given after it override them. The \opt{siunitx} key of Section~\ref{sec:labels} works the same way. The examples draw these flows:
+
+\noindent
+\begin{minipage}[t]{\dimexpr.5\linewidth-.5em}
+\begin{namedcode}{\T{flows A}}
+allowance -> candy   : 5
+allowance -> savings : 4
+birthday  -> savings : 6
+birthday  -> comics  : 2
+savings   -> bike    : 8
+\end{namedcode}
+\end{minipage}\hfill
+\begin{minipage}[t]{\dimexpr.5\linewidth-.5em}
+\begin{namedcode}{\T{flows B}}
+import@1 -> clean@2  : 1
+import@2 -> clean@2  : 1
+clean@2  -> model@5  : 1
+clean@4  -> model@3  : .5
+import@4 -> import@6 : .6
+\end{namedcode}
+\end{minipage}
+\presetgallery
+
+\section{Routes}\label{sec:routes}
+A route is a band steered by hand, for diagrams that follow no columns. It has a port: a position, a direction and a value. Each instruction draws from the port and moves it. The width of a route is its value times \opt{unit}, or \T{1pt} without a unit. Inside a \T{sankey} environment, routes use the unit of the columns and are drawn after them.
+\begin{description}
+\item[\api{sankeyStart}\oarg{instructions}\marg{name}\marg{value}] starts a route at the origin, heading right, in the next color of the palette. \key{at}{\meta{coordinate}}, \key{angle}{\meta{degrees}} and \key{from node}{\meta{node}} (the end side of a node of the columns) set the start.
+\item[\api{sankeyRoute}\marg{name}\marg{instructions}] continues a route.
+\item[\api{sankeySplit}\marg{name}\marg{part = value, \dots}] divides a route into parts side by side, from its left edge (seen in its direction) to its right edge. The parts inherit its color and styles.
+\item[\api{sankeyMerge}\marg{name}\marg{routes}] joins routes that run side by side, the first one leftmost.
+\end{description}
+Instructions run in order. Settings hold for the rest of the route:
+\begin{description}
+\item[\key{forward}{\meta{length}}] a straight band.
+\item[\key{left}{\meta{degrees}}<90>, \key{right}{\meta{degrees}}<90>, \key{turn}{\meta{degrees}}] a bend. \T{turn} turns left for positive angles. The inner edge follows a circle of \key{radius}{\meta{length}}<@the value of \opt{route radius}>, with \key{route radius}{\meta{length}} for all routes.
+\item[\key{bar}{\meta{length}}<1.5mm>] a node across the route, named \T{\meta{prefix}\meta{route}-bar} (styles \skstyle{every bar} and \key{bar style}{\meta{TikZ keys}}).
+\item[\key{arrow}{\meta{length}}<2mm>] a tip.
+\item[\key{label}{\meta{text}}<->] a label at the port, on the \key{label side}{\meta{side}}<\T{ahead}>: \T{ahead}, \T{behind}, \T{left}, \T{right}, or \T{north}, \T{east}, \T{south}, \T{west} for the side of the route nearest to that direction (style \skstyle{every route label}). \cmd{sankeyValue} is the value of the route.
+\item[\key{fade}{\choices{none,in,out,both}}] fades the next band only.
+\item[\key{color}{\meta{color}}, \key{tint}{\meta{0--100}}<100>, \key{opacity}{\meta{0--1}}<1>, \key{style}{\meta{TikZ keys}}] the look of the bands.
+\end{description}
+After each command, the coordinate \T{\meta{prefix}\meta{route}} marks the middle of the port. Flows that join a trunk are easiest drawn backwards: start at the trunk, split, and steer the parts away with \T{fade=out}.
+\begin{example}
+\begin{tikzpicture}
+\sankeySetup{unit=.5mm}
+\sankeyStart[angle=-90, color=sankey-5]{paint}{20}
+\sankeyRoute{paint}{fade=in, forward=8mm,
+   bar, label side=east, label=\sankeyValue}
+\sankeySplit{paint}{wall=14, floor=6}
+\sankeyRoute{floor}{color=spill,
+   forward=2mm, right, fade=out,
+   forward=10mm, label=floor}
+\sankeyRoute{wall}{forward=12mm,
+   arrow, label=wall}
+\end{tikzpicture}
+\end{example}
+
+\section{Bucket diagrams}\label{sec:buckets}
+In a bucket diagram each column is a bar divided into buckets, and every flow runs from a bucket to a bucket. A node is named \T{\meta{column}@\meta{bucket}}, such as \T{import@4} for the fourth bucket of the column \T{import}, counted from the top. A flow within one column is a loop beside it. Columns may have different numbers of buckets. All columns have the same height.
+\begin{description}
+\item[\key{buckets}{\choices{true,false}}] turns a diagram into a bucket diagram. The preset \opt{bucket bars} sets it with matching looks.
+\item[\api{sankeyColumn}\oarg{keys}\marg{name}] declares the next column. Its keys are \key{buckets}{\meta{integer}}<@the value of \opt{bucket count}>, \key{label}{\meta{text}}<@the name of the column> and \key{color}{\meta{color}}<@from the palette>. Undeclared columns follow in the order the flows name them.
+\item[\key{bucket count}{\meta{integer}}] the buckets of a column without its own number.
+\item[\key{bucket value}{\meta{number}}] the value that fills a bucket. Without one, it is the largest in- or outflow of any bucket.
+\item[\key{bucket fill}{\meta{0--100}\textbar\V{none}}] how strongly buckets with flows are filled with the color of their column.
+\item[\key{loop size}{\meta{length}}] how far a loop reaches beside its column.
+\end{description}
+Styles: \skstyle{every column}, \skstyle{every bucket line}, \skstyle{every bucket mark} (the filled ends of the flows), \skstyle{every column label}.
+
+In this example, \T{bucket count} gives every column 8 buckets, and \cmd{sankeyColumn} changes that for two of them: \T{import} has 4 buckets and \T{clean} 12, so their buckets are taller and shorter. \T{clean} also gets a label of its own. Declared columns come first, in the order of their declaration.
+\begin{example}
+\begin{sankeypicture}[bucket bars,
+   height=36mm, bucket count=8]
+   \sankeyColumn[buckets=4]{import}
+   \sankeyColumn[buckets=12,
+      label=cleaning]{clean}
+   \sankeyFlows{
+      import@1 -> clean@2 : 1,
+      import@2 -> clean@5 : .8,
+      import@3 -> import@4 : .6,
+      clean@2 -> model@5 : 1,
+      clean@5 -> model@3 : .5,
+      model@6 -> model@2 : .4,
+      clean@9 -> plot@7 : .9
+   }
+\end{sankeypicture}
+\end{example}
+
+\section{Drawing onto a diagram}\label{sec:annotate}
+After \T{\textbackslash end\{}\envref{sankey}\T{\}}, the picture has the Ti\emph{k}Z nodes \T{\meta{prefix}\meta{node}} for each visible node, \T{\meta{prefix}\meta{node}-label} and \T{\meta{prefix}\meta{node}-value} for its labels, and \T{\meta{prefix}legend}. These macros read the layout, until the next diagram:
+\begin{description}
+\item[\phantomsection\label{info:node}\api{sankeyNodeInfo}\marg{node}\marg{what}] \T{value}, \T{in}, \T{out}, \T{column}, \T{color}. The lengths \T{top}, \T{bottom}, \T{height} across the flows and \T{start}, \T{end} along them.
+\item[\api{sankeyColumnTotal}\marg{column}] the sum of the values of a column.
+\item[\api{sankeyFlowInfo}\marg{number}\marg{what}] for the flows in the order of declaration: \T{from}, \T{to}, \T{value}, \T{group}, and \T{start}, \T{end} where they meet their nodes. \api{sankeyFlowCount} is their number.
+\item[\api{sankeyGroupColor}\marg{group}] the color of a group.
+\item[\api{sankeyRouteInfo}\marg{route}\marg{what}] \T{x}, \T{y}, \T{angle} and \T{value} of the port of a route.
+\end{description}
+\begin{example}
+\begin{tikzpicture}
+\begin{sankey}
+   \sankeyFlows{
+      ideas -> drafts : 2,
+      ideas -> naps : 1,
+      drafts -> done : 1,
+      naps -> done : 1
+   }
+\end{sankey}
+\draw[densely dashed, black!50, rounded corners=1mm]
+   ([shift={(-1mm,1mm)}]sankey-drafts.north west)
+   rectangle
+   ([shift={(1mm,-1mm)}]sankey-naps.south east)
+   node[below, font=\scriptsize] {column
+      \sankeyNodeInfo{naps}{column}};
+\end{tikzpicture}
+\end{example}
+
+\section{Gallery}\label{sec:gallery}
+\subsection{Counts from loops}
+\begin{wideexample}
+\begin{sankeypicture}[percentages, column titles={washed in, ended up in}]
+   \foreach \m/\i in {cold wash/1, hot wash/2, by hand/3}{
+      \foreach \p/\j in {drawer/1, dryer/2, dog/3, another dimension/4}{
+         \pgfmathtruncatemacro\n{mod(5*\i+7*\j,13)+2}
+         \sankeyFlow{\m}{\p}{\n}}}
+\end{sankeypicture}
+\end{wideexample}
+
+\subsection{A coffee budget}
+\begin{wideexample}
+\begin{tikzpicture}
+   \sankeySetup{unit=.6mm, route radius=2.5mm, siunitx, value unit=\texteuro,
+      every route label/.style={font=\scriptsize, align=center},
+      every bar/.style={postaction={pattern=crosshatch dots, pattern color=white}}}
+   \sankeyStart[angle=0, color=bean]{budget}{60}
+   \sankeyRoute{budget}{label side=behind, label={pocket money\\\sankeyValue}, fade=in, forward=14mm, bar=2mm,
+      label side=north, label={coffee budget}}
+   \sankeySplit{budget}{beans=14, cafe=34, spilled=12}
+   \sankeyRoute{beans}{color=crema, forward=12mm, left=90, fade=out, forward=10mm, label={beans\\\sankeyValue}}
+   \sankeyRoute{spilled}{color=spill, forward=3mm, right=90, forward=4mm, arrow=2mm, label={spilled\\\sankeyValue}}
+   \sankeyRoute{cafe}{forward=20mm, bar=2mm}
+   \sankeySplit{cafe}{latte=20, cake=14}
+   \sankeyRoute{latte}{forward=6mm, left=40, right=40, fade=out, forward=12mm, label={oat latte\\\sankeyValue}}
+   \sankeyRoute{cake}{color=crema, forward=3mm, right=40, left=40, fade=out, forward=15mm,
+      label={cake, by accident\\\sankeyValue}}
+\end{tikzpicture}
+\end{wideexample}
+
+\section{Messages}
+Errors drop what they concern and nothing else: a flow that runs to the same or an earlier column, names an unknown node with \T{auto nodes=false} or cannot be read, and the flows that close a cycle. Warnings report negative flows, nodes declared smaller than their flows, skipped CSV lines, a split whose parts carry more than the route, and a diagram with nothing to draw.
+
+\section{Related packages}
+Neither pgf/Ti\emph{k}Z nor \sklink{https://ctan.org/pkg/pgfplots}{\T{pgfplots}} draws Sankey diagrams. \sklink{https://ctan.org/pkg/sankey}{\T{sankey}} by Paul Gaborit places every node by hand at a position and an angle, without a computed layout.
+
+\printindex[\jobname]
+\end{document}

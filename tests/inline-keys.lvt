@@ -1,0 +1,60 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% [n] puts a node into a column
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{butter[0] -> bread : 1, milk -> bread : 1}
+\end{sankey}
+\TestEq{butter col}{\sankeyNodeInfo{butter}{column}}{0}
+\TestEq{milk col}{\sankeyNodeInfo{milk}{column}}{0}
+\TestEq{bread col}{\sankeyNodeInfo{bread}{column}}{1}
+\end{tikzpicture}
+% a column pushes the node away from where the flows put it
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a[2] -> b : 1}
+\end{sankey}
+\TestEq{a col 2}{\sankeyNodeInfo{a}{column}}{2}
+\end{tikzpicture}
+% [keys] are node keys, also several of them
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{salt[color=red, column=1] -> bread : 1}
+\end{sankey}
+\TestEq{salt color}{\sankeyNodeInfo{salt}{color}}{red}
+\TestEq{salt col}{\sankeyNodeInfo{salt}{column}}{1}
+\TestEq{bread col}{\sankeyNodeInfo{bread}{column}}{2}
+\end{tikzpicture}
+% node and flow keys together; a colon in the flow keys is fine
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a[0] -> b : 1 [color=red, opacity=.5], c[color=blue] -> b : 2 [style={draw=black}], d -> b : 3 [group=x:y]}
+\end{sankey}
+\TestEq{count}{\sankeyFlowCount}{3}
+\TestEq{a col}{\sankeyNodeInfo{a}{column}}{0}
+\TestEq{c color}{\sankeyNodeInfo{c}{color}}{blue}
+\TestEq{value}{\sankeyFlowInfo{1}{value}}{1}
+\TestEq{value 2}{\sankeyFlowInfo{2}{value}}{2}
+\TestEq{to}{\sankeyFlowInfo{2}{to}}{b}
+\TestEq{group colon}{\sankeyFlowInfo{3}{group}}{x:y}
+\TestEq{b in}{\sankeyNodeInfo{b}{in}}{6}
+\end{tikzpicture}
+% a path with keys at the nodes
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a[0] -> b[color=green] -> c : 2}
+\end{sankey}
+\TestEq{path flows}{\sankeyFlowCount}{2}
+\TestEq{b color}{\sankeyNodeInfo{b}{color}}{green}
+\end{tikzpicture}
+% a second colon is an error
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 1 : 2}
+\end{sankey}
+\end{tikzpicture}
+\end{document}

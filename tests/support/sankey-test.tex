@@ -1,0 +1,171 @@
+\hfuzz=\maxdimen \hbadness=10000 \vfuzz=\maxdimen \vbadness=10000
+\ExplSyntaxOn
+\msg_new:nnn { sankey-test } { fail } { #1:~expected~`#3',~got~`#2'. }
+\cs_new_protected:Npn \sankeytest:nnn #1#2#3
+  { \str_if_eq:eeF {#2} {#3} { \msg_error:nneee { sankey-test } { fail } {#1} {#2} {#3} } }
+\cs_new_protected:Npn \sankeytest:nnnn #1#2#3#4
+  {
+    \fp_compare:nF { abs ( \dim_to_fp:n {#2} - \dim_to_fp:n {#3} ) <= \dim_to_fp:n {#4} }
+      { \msg_error:nneee { sankey-test } { fail } {#1} { \dim_eval:n {#2} } { \dim_eval:n {#3} } }
+  }
+% \TestEq{label}{actual}{expected}: fully expanded string comparison
+\NewDocumentCommand \TestEq { m m m }
+  { \sankeytest:nnn { \tl_to_str:n {#1} } {#2} {#3} }
+% \TestDim{label}{actual}{expected}{tolerance}
+\NewDocumentCommand \TestDim { m m m m }
+  { \sankeytest:nnnn { \tl_to_str:n {#1} } {#2} {#3} {#4} }
+% \TestHas{label}{node}: a node of that name exists
+\NewDocumentCommand \TestHas { m m }
+  { \cs_if_exist:cTF { pgf@sh@ns@#2 } { } { \msg_error:nnnnn { sankey-test } { fail } {#1} { missing } { #2 } } }
+\NewDocumentCommand \TestNo { m m }
+  { \cs_if_exist:cT { pgf@sh@ns@#2 } { \msg_error:nnnnn { sankey-test } { fail } {#1} { present } { absent } } }
+% \TestLess{label}{dim}{dim}: the first is smaller
+\NewDocumentCommand \TestLess { m m m }
+  { \dim_compare:nNnF {#2} < {#3} { \msg_error:nneee { sankey-test } { fail } {#1} { \dim_eval:n {#2} } { < ~ \dim_eval:n {#3} } } }
+\ExplSyntaxOff
+% [base] is a geometry with round numbers: 1pt per unit, 50pt columns, 2pt nodes, 2pt gaps
+\pgfkeys{/sankey/base/.style={unit=1pt, column sep=50pt, node width=2pt, node sep=2pt, relax=0, long flows=direct, outer rounding=0pt, label room=false}}
+% \TestAnchor{label}{node}{anchor}{x}{y}: the TikZ anchor of a named node, 0.05pt tolerance
+\makeatletter
+\newcommand\TestAnchor[5]{%
+  \pgfpointanchor{#2}{#3}%
+  \edef\sankeytest@x{\the\pgf@x}\edef\sankeytest@y{\the\pgf@y}%
+  \TestDim{#1 x}{\sankeytest@x}{#4}{0.05pt}%
+  \TestDim{#1 y}{\sankeytest@y}{#5}{0.05pt}}
+\makeatother
+% \AnchorY{node}{anchor}{macro}: the y coordinate of an anchor
+\makeatletter
+\newcommand\AnchorY[3]{\pgfpointanchor{#1}{#2}\edef#3{\the\pgf@y}}
+\makeatother
+% \CheckInvariants{prefix}: (an empty prefix skips the node check, buckets have no node of their own) after \end{sankey}; every drawn node and every flow sits where it should
+\ExplSyntaxOn
+\dim_new:N \l_sankeytest_ext_dim
+\cs_new_protected:Npn \sankeytest_check_nodes:n #1
+  {
+    \dim_zero:N \l_sankeytest_ext_dim
+    \seq_map_inline:Nn \g__sankey_nodes_seq
+      { \dim_set:Nn \l_sankeytest_ext_dim { \dim_max:nn { \l_sankeytest_ext_dim } { \sankeyNodeInfo {##1} { bottom } } } }
+    \seq_map_inline:Nn \g__sankey_nodes_seq
+      {
+        \__sankey_has:nnF { dummy } {##1}
+          {
+            \fp_compare:nNnT { \sankeyNodeInfo {##1} { value } } > { 0 }
+              {
+                \tl_if_empty:nF {#1} { \TestHas { node~##1 } { #1 ##1 } }
+                \dim_compare:nNnF { \sankeyNodeInfo {##1} { height } } > { 0pt }
+                  { \msg_error:nneee { sankey-test } { fail } { height~##1 } { \sankeyNodeInfo {##1} { height } } { > ~ 0pt } }
+                \dim_compare:nNnF { \sankeyNodeInfo {##1} { top } } > { -0.01pt }
+                  { \msg_error:nneee { sankey-test } { fail } { top~##1 } { \sankeyNodeInfo {##1} { top } } { >= ~ 0pt } }
+                \dim_compare:nNnF { \sankeyNodeInfo {##1} { bottom } } < { \l_sankeytest_ext_dim + 0.01pt }
+                  { \msg_error:nneee { sankey-test } { fail } { bottom~##1 } { \sankeyNodeInfo {##1} { bottom } } { <= ~ \dim_eval:n { \l_sankeytest_ext_dim } } }
+              }
+          }
+      }
+  }
+\cs_new_protected:Npn \sankeytest_in:nnn #1#2#3 % label, dim, node
+  {
+    \dim_compare:nNnF {#2} > { \sankeyNodeInfo {#3} { top } - 0.05pt }
+      { \msg_error:nneee { sankey-test } { fail } { #1~above } { \dim_eval:n {#2} } { >= ~ \sankeyNodeInfo {#3} { top } } }
+    \dim_compare:nNnF {#2} < { \sankeyNodeInfo {#3} { bottom } + 0.05pt }
+      { \msg_error:nneee { sankey-test } { fail } { #1~below } { \dim_eval:n {#2} } { <= ~ \sankeyNodeInfo {#3} { bottom } } }
+  }
+\cs_new_protected:Npn \sankeytest_check_flows:
+  {
+    \int_step_inline:nn { \sankeyFlowCount }
+      {
+        \__sankey_has:nnF { fdrop } {##1}
+          {
+            \fp_compare:nNnT { \sankeyFlowInfo {##1} { value } } > { 0 }
+              {
+                \sankeytest_in:nnn { flow~##1~start } { \sankeyFlowInfo {##1} { start } } { \sankeyFlowInfo {##1} { from } }
+                \sankeytest_in:nnn { flow~##1~end } { \sankeyFlowInfo {##1} { end } } { \sankeyFlowInfo {##1} { to } }
+              }
+          }
+      }
+  }
+\NewDocumentCommand \CheckInvariants { m }
+  { \sankeytest_check_nodes:n {#1} \sankeytest_check_flows: }
+\ExplSyntaxOff
+
+% \CheckLayout{prefix}{width}: after \end{sankey}, inside the picture. No two labels, value labels
+% or the legend overlap, no label covers a node other than its own, and with a width (else empty)
+% the picture is no wider
+\ExplSyntaxOn
+\makeatletter
+\seq_new:N \l_sankeytest_boxes_seq
+\fp_new:N \l_sankeytest_tol_fp
+\fp_set:Nn \l_sankeytest_tol_fp { .3 }
+\cs_new_protected:Npn \sankeytest_box:nnn #1#2#3 % TikZ name, owner, kind (node | label)
+  {
+    \pgfutil@ifundefined { pgf@sh@ns@#1 } { }
+      {
+        \pgfpointanchor {#1} { south~west }
+        \tl_set:Ne \l_tmpa_tl { \dim_to_decimal:n { \pgf@x } , \dim_to_decimal:n { \pgf@y } }
+        \pgfpointanchor {#1} { north~east }
+        \seq_put_right:Ne \l_sankeytest_boxes_seq
+          { { \l_tmpa_tl , \dim_to_decimal:n { \pgf@x } , \dim_to_decimal:n { \pgf@y } } {#2} {#3} {#1} }
+      }
+  }
+\cs_new_protected:Npn \sankeytest_check_pairs:
+  {
+    \seq_map_indexed_inline:Nn \l_sankeytest_boxes_seq
+      {
+        \seq_map_indexed_inline:Nn \l_sankeytest_boxes_seq
+          {
+            \int_compare:nNnT {##1} < {####1}
+              { \sankeytest_compare:nnnnnnnn ##2 ####2 }
+          }
+      }
+  }
+% two boxes: {coords}{owner}{kind}{name} each
+\cs_new_protected:Npn \sankeytest_compare:nnnnnnnn #1#2#3#4#5#6#7#8
+  {
+    \bool_if:nT
+      {
+        % a label may cover its own node; nodes are checked by \CheckInvariants
+        ! ( \str_if_eq_p:nn {#3} { node } && \str_if_eq_p:nn {#7} { node } )
+        && ! ( \str_if_eq_p:nn {#2} {#6} && ! ( \str_if_eq_p:nn {#3} { label } && \str_if_eq_p:nn {#7} { label } ) )
+      }
+      {
+        \sankeytest_hit:nnTF {#1} {#5}
+          { \msg_error:nneee { sankey-test } { fail } { overlap } { #4 } { #8 } }
+          { }
+      }
+  }
+\prg_new_protected_conditional:Npnn \sankeytest_hit:nn #1#2 { TF }
+  { \sankeytest_hit_aux:w #1 , #2 \q_stop }
+\cs_new_protected:Npn \sankeytest_hit_aux:w #1 , #2 , #3 , #4 , #5 , #6 , #7 , #8 \q_stop
+  {
+    \bool_lazy_all:nTF
+      {
+        { \fp_compare_p:nNn { #1 } < { #7 - \l_sankeytest_tol_fp } }
+        { \fp_compare_p:nNn { #5 } < { #3 - \l_sankeytest_tol_fp } }
+        { \fp_compare_p:nNn { #2 } < { #8 - \l_sankeytest_tol_fp } }
+        { \fp_compare_p:nNn { #6 } < { #4 - \l_sankeytest_tol_fp } }
+      }
+      { \prg_return_true: } { \prg_return_false: }
+  }
+\NewDocumentCommand \CheckLayout { m m }
+  {
+    \seq_clear:N \l_sankeytest_boxes_seq
+    \seq_map_inline:Nn \g__sankey_nodes_seq
+      {
+        \__sankey_has:nnF { dummy } {##1}
+          {
+            \sankeytest_box:nnn { #1 ##1 } {##1} { node }
+            \sankeytest_box:nnn { #1 ##1 -label } {##1} { label }
+            \sankeytest_box:nnn { #1 ##1 -value } {##1} { label }
+          }
+      }
+    \sankeytest_box:nnn { #1 legend } { legend } { label }
+    \sankeytest_check_pairs:
+    \tl_if_blank:nF {#2}
+      {
+        \pgfpointanchor { current~bounding~box } { east } \dim_set_eq:NN \l_tmpa_dim \pgf@x
+        \pgfpointanchor { current~bounding~box } { west }
+        \dim_compare:nNnT { \l_tmpa_dim - \pgf@x } > { #2 + .5pt }
+          { \msg_error:nneee { sankey-test } { fail } { #1width } { \dim_eval:n { \l_tmpa_dim - \pgf@x } } { <= ~ #2 } }
+      }
+  }
+\makeatother
+\ExplSyntaxOff

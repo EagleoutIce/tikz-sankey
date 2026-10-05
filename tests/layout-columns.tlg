@@ -1,0 +1,16 @@
+This is a generated file for the l3build validation system.
+Don't change this file in any respect.
+! Package tikz-sankey Error: Dropped to break a cycle: c -> a. Give the nodes columns to keep these flows.
+Type <return> to continue.
+ ...                                              
+l. ...\end{sankey}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.
+! Package tikz-sankey Error: The flow `c' -> `a' runs from column 5 to column 3, but flows must run to a later column. The flow is dropped.
+Type <return> to continue.
+ ...                                              
+l. ...\end{sankey}
+LaTeX does not know anything more about this error, sorry.
+Try typing <return> to proceed.
+If that doesn't work, type X <return> to quit.

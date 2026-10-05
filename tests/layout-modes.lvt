@@ -1,0 +1,42 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% a -> b -> c -> d is a chain; s has no input and feeds only d; t is a sink fed by a
+\def\Flows{\sankeyFlows{a -> b : 4, b -> c : 4, c -> d : 4, s -> d : 2, a -> t : 1}}
+\newcommand\Cols[1]{\TestEq{a #1}{\sankeyNodeInfo{a}{column}}{\ColA}
+  \TestEq{s #1}{\sankeyNodeInfo{s}{column}}{\ColS}
+  \TestEq{t #1}{\sankeyNodeInfo{t}{column}}{\ColT}
+  \TestEq{d #1}{\sankeyNodeInfo{d}{column}}{3}}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[layout=left]\Flows\end{sankey}
+\def\ColA{0}\def\ColS{0}\def\ColT{1}\Cols{left}
+\end{tikzpicture}
+% justify: sinks go to the last column
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[layout=justify]\Flows\end{sankey}
+\def\ColA{0}\def\ColS{0}\def\ColT{3}\Cols{justify}
+\end{tikzpicture}
+% right: every node as far right as possible
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[layout=right]\Flows\end{sankey}
+\def\ColA{0}\def\ColS{2}\def\ColT{3}\Cols{right}
+\TestEq{right b}{\sankeyNodeInfo{b}{column}}{1}
+\end{tikzpicture}
+% center: a source sits just before its first target
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[layout=center]\Flows\end{sankey}
+\def\ColA{0}\def\ColS{2}\def\ColT{1}\Cols{center}
+\end{tikzpicture}
+% explicit columns are kept
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[layout=right]
+  \sankeyNode[column=1]{s}
+  \Flows
+\end{sankey}
+\TestEq{explicit s}{\sankeyNodeInfo{s}{column}}{1}
+\end{tikzpicture}
+\END
+\end{document}

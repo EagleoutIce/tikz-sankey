@@ -1,0 +1,77 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\makeatletter
+\ExplSyntaxOn
+\NewDocumentCommand \RecordAffixes { }
+  { \xdef\gotpre{\l__sankey_vprefix_tl}\xdef\gotsuf{\l__sankey_vsuffix_tl} }
+\ExplSyntaxOff
+\makeatother
+% values: the value labels carry the (rounded) value, through the number format
+\def\gotnum{}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[values, label position=none, number format={\xdef\gotnum{\gotnum<#1>}}]
+  \sankeyFlows{a -> b : 3.14159}
+\end{sankey}
+\end{tikzpicture}
+\TestEq{values default precision}{\gotnum}{<3.14><3.14>}
+\def\gotnum{}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[values, precision=0, label position=none, number format={\xdef\gotnum{\gotnum<#1>}}]
+  \sankeyFlows{a -> b : 3.14159}
+\end{sankey}
+\end{tikzpicture}
+\TestEq{values precision 0}{\gotnum}{<3><3>}
+% percentages: the share of the column
+\def\gotpct{}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[percentages, label position=none, percent format={\xdef\gotpct{\gotpct<#1>}}]
+  \sankeyFlows{a -> b : 1, a -> c : 3}
+\end{sankey}
+\end{tikzpicture}
+\TestEq{percentages}{\gotpct}{<100><25><75>}
+% prefix and suffix
+\def\gotpre{}\def\gotsuf{}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[value prefix={EUR}, value suffix={kg}, label={\RecordAffixes}]
+  \sankeyFlows{a -> b : 1}
+\end{sankey}
+\end{tikzpicture}
+\TestEq{prefix}{\gotpre}{EUR}
+\TestEq{suffix}{\gotsuf}{kg}
+\begin{tikzpicture}\sankeySetup{base}
+\sankeySetup{value prefix=<<}
+\begin{sankey}[label={\RecordAffixes}]
+  \sankeyFlows{a -> b : 1}
+\end{sankey}
+\end{tikzpicture}
+\TestEq{prefix via setup}{\gotpre}{<<}
+\TestEq{suffix is empty}{\gotsuf}{}
+% gap is node sep
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[gap=10pt]
+  \sankeyFlows{a -> b : 4, a -> c : 4}
+\end{sankey}
+\TestDim{gap between b and c}{\sankeyNodeInfo{c}{top}-\sankeyNodeInfo{b}{bottom}}{10pt}{0.01pt}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[node sep=10pt]
+  \sankeyFlows{a -> b : 4, a -> c : 4}
+\end{sankey}
+\TestDim{node sep between b and c}{\sankeyNodeInfo{c}{top}-\sankeyNodeInfo{b}{bottom}}{10pt}{0.01pt}
+\end{tikzpicture}
+% node names with commas and spaces
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlow{Snacks, salty}{Chips and more}{3}
+\end{sankey}
+\TestHas{comma name}{sankey-Snacks, salty}
+\TestHas{space name}{sankey-Chips and more}
+\TestEq{value of comma node}{\sankeyNodeInfo{Snacks, salty}{value}}{3}
+\TestAnchor{comma anchor}{sankey-Snacks, salty}{east}{2pt}{-1.5pt}
+\end{tikzpicture}
+\END
+\end{document}

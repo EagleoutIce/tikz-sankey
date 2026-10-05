@@ -1,0 +1,98 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\makeatletter
+\ExplSyntaxOn
+\NewDocumentCommand \RecordAffixes { }
+  { \xdef\gotpre{\l__sankey_vprefix_tl}\xdef\gotsuf{\l__sankey_vsuffix_tl} }
+\ExplSyntaxOff
+\makeatother
+% lines given as a verbatim argument
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyMermaid{
+sankey-beta
+
+%% a comment
+A,B,10
+"A, x",C,5
+B,D,10
+}
+\end{sankey}
+\TestEq{count}{\sankeyFlowCount}{3}
+\TestEq{value}{\sankeyNodeInfo{A}{value}}{10}
+\TestEq{column D}{\sankeyNodeInfo{D}{column}}{2}
+\TestEq{quoted name}{\sankeyFlowInfo{2}{from}}{A, x}
+\TestEq{no header taken}{\sankeyFlowInfo{1}{from}}{A}
+\end{tikzpicture}
+% the environment
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+\begin{sankeymermaid}
+sankey
+P,Q,4
+Q,R,4
+\end{sankeymermaid}
+\end{sankey}
+\TestEq{env count}{\sankeyFlowCount}{2}
+\TestEq{env column}{\sankeyNodeInfo{R}{column}}{2}
+\TestEq{env value}{\sankeyNodeInfo{Q}{value}}{4}
+\end{tikzpicture}
+% a file
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyMermaidFile{m1.mmd}
+\end{sankey}
+\TestEq{file count}{\sankeyFlowCount}{3}
+\TestEq{file value}{\sankeyNodeInfo{B}{value}}{10}
+\TestEq{file column}{\sankeyNodeInfo{C}{column}}{1}
+\end{tikzpicture}
+% outside of an environment they draw a picture
+\sankeyMermaidFile{m1.mmd}
+\TestHas{file picture}{sankey-D}
+\sankeyMermaid{
+A2,B2,3
+}
+\TestHas{verbatim picture}{sankey-B2}
+\begin{sankeymermaid}
+sankey-beta
+A3,B3,3
+\end{sankeymermaid}
+\TestHas{env picture}{sankey-B3}
+% front matter: prefix, suffix, nodeAlignment (in a picture only; the label code records them)
+\sankeyMermaidFile[label={\RecordAffixes}, unit=1pt, column sep=60pt]{m2.mmd}
+\TestEq{prefix}{\gotpre}{$}
+\TestEq{suffix (an outer space becomes a tie)}{\gotsuf}{\string~k}
+% nodeAlignment=right moves C next to the last column
+\sankeyMermaidFile[label={}, unit=1pt, column sep=60pt]{m2.mmd}
+\TestHas{aligned picture}{sankey-C}
+\TestEq{right: C in the last column}{\sankeyNodeInfo{C}{column}}{2}
+\TestEq{right: A stays}{\sankeyNodeInfo{A}{column}}{0}
+\sankeyMermaidFile[label={}, layout=left]{m1.mmd}
+\TestEq{left: C in column 1}{\sankeyNodeInfo{C}{column}}{1}
+% front matter that is not at the start is also read; the number goes through the format
+\sankeyMermaid[label={\sankeyNumber{3}}, number format={\xdef\gotnum{<#1>}}]{
+---
+config:
+  sankey:
+    prefix: "EUR "
+---
+A4,B4,3
+}
+\TestEq{number format arg}{\gotnum}{<3>}
+\sankeyMermaid[label={\RecordAffixes}, value suffix={ \%}]{
+A5,B5,1
+}
+\TestEq{key suffix}{\gotsuf}{\%}
+% inside the environment: only flows, the front matter is not applied
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyMermaidFile{m2.mmd}
+\end{sankey}
+\TestEq{no layout in env}{\sankeyNodeInfo{C}{column}}{1}
+\end{tikzpicture}
+\END
+\end{document}

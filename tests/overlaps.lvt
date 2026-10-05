@@ -1,0 +1,76 @@
+\documentclass{article}
+\usepackage{siunitx}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% labels, value labels and legends never overlap each other or other nodes, and a diagram with a
+% width is no wider; with the defaults of the package, over many shapes of diagrams
+\newcounter{case}
+% \Case{keys}{flows}{width or empty}
+\NewDocumentCommand\Case{m m m}{%
+  \stepcounter{case}%
+  \begin{tikzpicture}
+  \IfBlankF{#3}{\sankeySetup{width=#3}}%
+  \begin{sankey}[name prefix=c\arabic{case}-, #1]
+    \expandafter\sankeyFlows\expandafter{#2}
+  \end{sankey}
+  \CheckLayout{c\arabic{case}-}{#3}
+  \CheckInvariants{c\arabic{case}-}
+  \end{tikzpicture}}
+\def\A{allowance -> candy : 5, allowance -> savings : 4, birthday -> savings : 6, birthday -> comics : 2, savings -> bike : 8}
+\def\P{pizza -> dinner : 4, pizza -> fridge : 6, cake -> fridge : 3, cake -> neighbour : 2, fridge -> breakfast : 5, fridge -> bin : 4}
+\def\G{fridge -> {snacks, salty} : 12 [group=night], fridge -> snacks sweet : 7.5 [group=day], {snacks, salty} -> couch : 10 [group=night], snacks sweet -> couch : 6 [group=day]}
+\def\W{week -> lazy : 118, week -> busy : 31, week -> hungry : 19, lazy -> sleeping : 96, lazy -> loafing : 22, busy -> judging : 17, busy -> knocking : 14, hungry -> eating : 7, hungry -> begging : 12}
+\def\L{a very long source label -> a rather long label in the middle : 3, a rather long label in the middle -> another long label at the end : 2, a very long source label -> x : 1}
+\def\T{big -> a : 50, big -> b : 1, big -> c : 1, big -> d : 1, big -> e : .5, big -> f : .5}
+\def\C{cold wash -> drawer : 7, cold wash -> dryer : 3, cold wash -> dog : 2, hot wash -> drawer : 4, hot wash -> dryer : 9, hot wash -> another dimension : 5, by hand -> dog : 6, by hand -> another dimension : 3}
+% the presets, at the width of the manual's examples and wider
+\Case{}{\A}{7cm}
+\Case{classic}{\A}{7cm}
+\Case{alluvial}{\A}{7cm}
+\Case{energy}{\A}{7cm}
+\Case{mermaid}{\A}{7cm}
+\Case{values}{\A}{7cm}
+\Case{percentages}{\A}{8cm}
+\Case{black and white}{\A}{7cm}
+\Case{values}{\A}{12cm}
+\Case{}{\A}{}
+% labels with values, groups and legends
+\Case{label={\sankeyName\space\sankeyValue}}{\P}{8cm}
+\Case{values}{\G}{8cm}
+\Case{values}{\G}{}
+\Case{values, legend=below}{\G}{8cm}
+\Case{values, legend=above}{\G}{8cm}
+\Case{values, legend=left}{\G}{10cm}
+\Case{values, legend=right}{\G}{12cm}
+\Case{percentages, legend for=nodes, legend=right}{\P}{14cm}
+% label positions
+\Case{label position=before}{\P}{9cm}
+\Case{label position=inside, values}{\P}{9cm}
+\Case{label position=right, value label position=left, percentages}{\P}{9cm}
+\Case{label position=after, value label position=after, values}{\P}{9cm}
+\Case{node color=column, values}{\W}{11cm}
+\Case{node color=column, values, height=30mm}{\W}{11cm}
+\Case{percentages, height=25mm}{\C}{9cm}
+\Case{percentages, column titles={washed in, ended up in}}{\C}{9cm}
+% long and tiny labels, small nodes
+\Case{}{\L}{14cm}
+\Case{values}{\L}{}
+\Case{values}{\T}{8cm}
+\Case{values, height=20mm}{\T}{8cm}
+\Case{values, min pitch=3mm}{\T}{}
+\Case{label backdrop=false, values}{\T}{}
+% directions
+\Case{direction=down, values}{\P}{}
+\Case{direction=up, values}{\P}{}
+\Case{direction=left, values}{\P}{9cm}
+\Case{direction=down, values}{\G}{}
+% layouts and alignment
+\Case{layout=justify, values}{\P}{9cm}
+\Case{layout=right, align=center, values}{\P}{9cm}
+\Case{layout=center, align=bottom, values}{\A}{9cm}
+\Case{siunitx, values, value unit={\unit{\kilo\gram}}}{cookies -> me : 1234.56, cookies -> dog : 210.04}{8cm}
+\Case{black and white}{books -> read : 5, books -> lent : 3, books -> shelf : 2, books -> lost : 2, read -> kept : 1, read -> sold : 4}{7cm}
+\END

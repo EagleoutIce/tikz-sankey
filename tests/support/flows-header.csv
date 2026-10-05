@@ -1,0 +1,4 @@
+from,to,value,group
+a,b,5,G1
+a,c,3,G2
+b,d,5,G1

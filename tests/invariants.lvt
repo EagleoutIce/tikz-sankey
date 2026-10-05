@@ -1,0 +1,43 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+\begin{tikzpicture}
+\begin{sankey}[name prefix=i1-, node color=column, values, width=8cm, height=28mm]
+  \sankeyFlows{week -> lazy : 118, week -> busy : 31, week -> hungry : 19,
+    lazy -> sleeping : 96, lazy -> loafing : 22, busy -> judging : 17, busy -> knocking : 14,
+    hungry -> eating : 7, hungry -> begging : 12}
+\end{sankey}
+\CheckInvariants{i1-}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{sankey}[name prefix=i2-]
+  \sankeyFlows{alarm -> snooze : 3, alarm -> up : 2, snooze -> late : 2, snooze -> up : 1, up -> late : 2}
+\end{sankey}
+\CheckInvariants{i2-}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{sankey}[name prefix=i3-, direction=down]
+  \sankeyFlows{alarm -> snooze : 3, alarm -> up : 2, snooze -> late : 2, snooze -> up : 1, up -> late : 2}
+\end{sankey}
+\CheckInvariants{i3-}
+\end{tikzpicture}
+\begin{tikzpicture}
+\begin{sankey}[name prefix=i4-]
+  \sankeyFlows{pizza -> dinner : 4, pizza -> fridge : 6, cake -> fridge : 3, cake -> neighbour : 2,
+    fridge -> breakfast : 5, fridge -> bin : 4, pizza -> bin : 1}
+\end{sankey}
+\CheckInvariants{i4-}
+\end{tikzpicture}
+% a 3x4 matrix made by loops
+\begin{tikzpicture}
+\begin{sankey}[name prefix=i5-]
+  \foreach \i in {1,2,3} { \foreach \j in {1,2,3,4} {
+    \sankeyFlow{src\i}{dst\j}{\fpeval{\i+\j}} } }
+\end{sankey}
+\CheckInvariants{i5-}
+\end{tikzpicture}
+\END
+\end{document}

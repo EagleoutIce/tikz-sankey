@@ -1,0 +1,264 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% a route of value 10 with 1pt per unit is 10pt wide
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt, label distance=1mm}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{r}{10}
+\TestDim{start x}{\sankeyRouteInfo{r}{x}}{0pt}{0.01pt}
+\TestDim{start y}{\sankeyRouteInfo{r}{y}}{0pt}{0.01pt}
+\TestEq{start angle}{\sankeyRouteInfo{r}{angle}}{0}
+\TestEq{start value}{\sankeyRouteInfo{r}{value}}{10}
+\TestAnchor{start marker}{sankey-r}{center}{0pt}{0pt}
+\sankeyRoute{r}{forward=10pt}
+\TestDim{forward x}{\sankeyRouteInfo{r}{x}}{10pt}{0.01pt}
+\TestDim{forward y}{\sankeyRouteInfo{r}{y}}{0pt}{0.01pt}
+\TestAnchor{moved marker}{sankey-r}{center}{10pt}{0pt}
+\sankeyRoute{r}{forward=5pt, forward=5pt}
+\TestDim{forward twice}{\sankeyRouteInfo{r}{x}}{20pt}{0.01pt}
+\sankeyRoute{r}{forward=1cm}
+\TestDim{forward cm}{\sankeyRouteInfo{r}{x}}{48.45276pt}{0.01pt}
+\end{tikzpicture}
+% angle and position
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt}
+\sankeyStart[at={(5pt,7pt)}, angle=90]{r}{10}
+\TestDim{at x}{\sankeyRouteInfo{r}{x}}{5pt}{0.01pt}
+\TestDim{at y}{\sankeyRouteInfo{r}{y}}{7pt}{0.01pt}
+\TestEq{angle}{\sankeyRouteInfo{r}{angle}}{90}
+\sankeyRoute{r}{forward=10pt}
+\TestDim{up x}{\sankeyRouteInfo{r}{x}}{5pt}{0.01pt}
+\TestDim{up y}{\sankeyRouteInfo{r}{y}}{17pt}{0.01pt}
+\sankeyRoute{r}{angle=180, forward=3pt}
+\TestDim{left x}{\sankeyRouteInfo{r}{x}}{2pt}{0.01pt}
+\TestDim{left y}{\sankeyRouteInfo{r}{y}}{17pt}{0.01pt}
+\sankeyRoute{r}{angle=-90, forward=4pt}
+\TestDim{down y}{\sankeyRouteInfo{r}{y}}{13pt}{0.01pt}
+\sankeyRoute{r}{at={(1pt,1pt)}}
+\TestDim{moved at x}{\sankeyRouteInfo{r}{x}}{1pt}{0.01pt}
+\TestDim{moved at y}{\sankeyRouteInfo{r}{y}}{1pt}{0.01pt}
+\end{tikzpicture}
+% turns
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{l}{10}
+\sankeyRoute{l}{left=90}
+\TestDim{left x}{\sankeyRouteInfo{l}{x}}{10pt}{0.01pt}
+\TestDim{left y}{\sankeyRouteInfo{l}{y}}{10pt}{0.01pt}
+\TestEq{left angle}{\sankeyRouteInfo{l}{angle}}{90}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{rr}{10}
+\sankeyRoute{rr}{right=90}
+\TestDim{right x}{\sankeyRouteInfo{rr}{x}}{10pt}{0.01pt}
+\TestDim{right y}{\sankeyRouteInfo{rr}{y}}{-10pt}{0.01pt}
+\TestEq{right angle}{\sankeyRouteInfo{rr}{angle}}{-90}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{t}{10}
+\sankeyRoute{t}{turn=-90}
+\TestDim{turn x}{\sankeyRouteInfo{t}{x}}{10pt}{0.01pt}
+\TestDim{turn y}{\sankeyRouteInfo{t}{y}}{-10pt}{0.01pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{d}{10}
+\sankeyRoute{d}{left}
+\TestEq{default left}{\sankeyRouteInfo{d}{angle}}{90}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{e}{10}
+\sankeyRoute{e}{right}
+\TestEq{default right}{\sankeyRouteInfo{e}{angle}}{-90}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{f}{10}
+\sankeyRoute{f}{left=45}
+\TestDim{45 x}{\sankeyRouteInfo{f}{x}}{7.0711pt}{0.01pt}
+\TestDim{45 y}{\sankeyRouteInfo{f}{y}}{2.9289pt}{0.01pt}
+\TestEq{45 angle}{\sankeyRouteInfo{f}{angle}}{45}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{g}{10}
+\sankeyRoute{g}{left=0, forward=1pt}
+\TestDim{zero turn}{\sankeyRouteInfo{g}{x}}{1pt}{0.01pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{h}{10}
+\sankeyRoute{h}{radius=10pt, left=90}
+\TestDim{radius x}{\sankeyRouteInfo{h}{x}}{15pt}{0.01pt}
+\TestDim{radius y}{\sankeyRouteInfo{h}{y}}{15pt}{0.01pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0, radius=10pt]{i}{10}
+\sankeyRoute{i}{left=90}
+\TestDim{start radius}{\sankeyRouteInfo{i}{x}}{15pt}{0.01pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{j}{10}
+\sankeyRoute{j}{forward=10pt, left=90, forward=10pt, left=90, forward=10pt}
+\TestDim{loop x}{\sankeyRouteInfo{j}{x}}{0pt}{0.01pt}
+\TestDim{loop y}{\sankeyRouteInfo{j}{y}}{30pt}{0.01pt}
+\TestEq{loop angle}{\sankeyRouteInfo{j}{angle}}{180}
+\TYPE{route: \sankeyRouteInfo{j}{x} \sankeyRouteInfo{j}{y} \sankeyRouteInfo{j}{angle} \sankeyRouteInfo{j}{value}}
+\end{tikzpicture}
+% a turn on a thin route
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=2pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{r}{2}
+\sankeyRoute{r}{left=90}
+\TestDim{thin x}{\sankeyRouteInfo{r}{x}}{3pt}{0.01pt}
+\TestDim{thin y}{\sankeyRouteInfo{r}{y}}{3pt}{0.01pt}
+\end{tikzpicture}
+% bars and arrows advance the route
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{r}{10}
+\sankeyRoute{r}{bar=4pt}
+\TestDim{bar advances}{\sankeyRouteInfo{r}{x}}{4pt}{0.01pt}
+\TestHas{bar node}{sankey-r-bar}
+\TestAnchor{bar west}{sankey-r-bar}{west}{0pt}{0pt}
+\TestAnchor{bar east}{sankey-r-bar}{east}{4pt}{0pt}
+\TestAnchor{bar north}{sankey-r-bar}{north}{2pt}{5pt}
+\sankeyRoute{r}{bar}
+\TestDim{default bar}{\sankeyRouteInfo{r}{x}}{8.26772pt}{0.01pt}
+\sankeyRoute{r}{arrow=3pt}
+\TestDim{arrow advances}{\sankeyRouteInfo{r}{x}}{11.26772pt}{0.01pt}
+\sankeyRoute{r}{arrow}
+\TestDim{default arrow}{\sankeyRouteInfo{r}{x}}{16.95826pt}{0.01pt}
+\sankeyStart[at={(0pt,0pt)}, angle=90, bar style={draw=red}]{s}{10}
+\sankeyRoute{s}{bar=2pt, bar style={thick}, forward=3pt}
+\TestAnchor{rotated bar}{sankey-s-bar}{east}{0pt}{2pt}
+\TestDim{after bar}{\sankeyRouteInfo{s}{y}}{5pt}{0.01pt}
+\end{tikzpicture}
+% split: parts side by side from the left edge, merge: the reverse
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0, color=red, tint=40, opacity=.5]{r}{10}
+\sankeySplit{r}{a=4, b=6}
+\TestDim{split a y}{\sankeyRouteInfo{a}{y}}{3pt}{0.01pt}
+\TestDim{split b y}{\sankeyRouteInfo{b}{y}}{-2pt}{0.01pt}
+\TestDim{split a x}{\sankeyRouteInfo{a}{x}}{0pt}{0.01pt}
+\TestEq{split a value}{\sankeyRouteInfo{a}{value}}{4}
+\TestEq{split b value}{\sankeyRouteInfo{b}{value}}{6}
+\TestEq{split angle}{\sankeyRouteInfo{b}{angle}}{0}
+\TestEq{parent value}{\sankeyRouteInfo{r}{value}}{10}
+\TestDim{parent y}{\sankeyRouteInfo{r}{y}}{0pt}{0.01pt}
+\TestAnchor{part marker}{sankey-a}{center}{0pt}{3pt}
+\ExplSyntaxOn
+\TestEq{child color}{\__sankey_get:nn{rcol}{a}}{red}
+\TestEq{child tint}{\__sankey_get:nn{rtint}{a}}{40}
+\TestEq{child opacity}{\__sankey_get:nn{ropac}{b}}{0.5}
+\ExplSyntaxOff
+\sankeyRoute{a}{forward=10pt}
+\sankeyRoute{b}{forward=10pt}
+\sankeyMerge{m}{a, b}
+\TestEq{merge value}{\sankeyRouteInfo{m}{value}}{10}
+\TestDim{merge x}{\sankeyRouteInfo{m}{x}}{10pt}{0.01pt}
+\TestDim{merge y}{\sankeyRouteInfo{m}{y}}{0pt}{0.01pt}
+\TestEq{merge angle}{\sankeyRouteInfo{m}{angle}}{0}
+\sankeyRoute{m}{forward=2pt}
+\TestDim{merged moves}{\sankeyRouteInfo{m}{x}}{12pt}{0.01pt}
+\TestDim{parts stay}{\sankeyRouteInfo{a}{x}}{10pt}{0.01pt}
+\end{tikzpicture}
+% split and merge on a rotated route, with three parts
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt}
+\sankeyStart[at={(0pt,0pt)}, angle=90]{r}{10}
+\sankeySplit{r}{a=2, b=3, c=5}
+\TestDim{rot a x}{\sankeyRouteInfo{a}{x}}{-4pt}{0.01pt}
+\TestDim{rot b x}{\sankeyRouteInfo{b}{x}}{-1.5pt}{0.01pt}
+\TestDim{rot c x}{\sankeyRouteInfo{c}{x}}{2.5pt}{0.01pt}
+\TestDim{rot a y}{\sankeyRouteInfo{a}{y}}{0pt}{0.01pt}
+\sankeyMerge{m}{c, a}
+\TestEq{merge two}{\sankeyRouteInfo{m}{value}}{7}
+\end{tikzpicture}
+% fades are used up by the next band
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0, fade=in]{r}{10}
+\ExplSyntaxOn
+\TestEq{fade at start}{\__sankey_get:nn{rfade}{r}}{in}
+\ExplSyntaxOff
+\sankeyRoute{r}{forward=3pt}
+\ExplSyntaxOn
+\TestEq{fade used up}{\__sankey_get:nn{rfade}{r}}{none}
+\ExplSyntaxOff
+\sankeyRoute{r}{fade=out, left=90}
+\ExplSyntaxOn
+\TestEq{fade used up by a turn}{\__sankey_get:nn{rfade}{r}}{none}
+\ExplSyntaxOff
+\sankeyRoute{r}{fade=both, forward=1pt, fade=in}
+\ExplSyntaxOn
+\TestEq{last fade kept}{\__sankey_get:nn{rfade}{r}}{in}
+\ExplSyntaxOff
+\sankeyRoute{r}{fade=out, bar=1pt}
+\ExplSyntaxOn
+\TestEq{bars keep it}{\__sankey_get:nn{rfade}{r}}{out}
+\ExplSyntaxOff
+\sankeyStart[at={(0pt,0pt)}, angle=0]{s}{10}
+\sankeyRoute{s}{fade=both}
+\sankeySplit{s}{a=5, b=5}
+\ExplSyntaxOn
+\TestEq{children do not fade}{\__sankey_get:nn{rfade}{a}}{none}
+\ExplSyntaxOff
+\end{tikzpicture}
+% labels at the port
+\begin{tikzpicture}
+\sankeySetup{unit=1pt, route radius=5pt, label distance=1mm}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{a}{10}
+\sankeyRoute{a}{label=A}
+\TestHas{label node}{sankey-a-label}
+\TestAnchor{ahead}{sankey-a-label}{west}{1mm}{0pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{b}{10}
+\sankeyRoute{b}{label side=behind, label=B}
+\TestAnchor{behind}{sankey-b-label}{east}{-1mm}{0pt}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{c}{10}
+\sankeyRoute{c}{label side=left, label=C}
+\TestAnchor{left}{sankey-c-label}{south}{0pt}{5pt+1mm}
+\sankeyStart[at={(0pt,0pt)}, angle=0]{d}{10}
+\sankeyRoute{d}{label side=right, label=D}
+\TestAnchor{right}{sankey-d-label}{north}{0pt}{-5pt-1mm}
+\end{tikzpicture}
+% routes of a diagram start at its nodes and share its unit
+\begin{tikzpicture}\sankeySetup{base, route radius=5pt}
+\begin{sankey}
+  \sankeyFlows{a -> b : 10}
+  \sankeyStart[from node=b]{r}{5}
+  \sankeyRoute{r}{forward=10pt}
+\end{sankey}
+\TestDim{from node x}{\sankeyRouteInfo{r}{x}}{62pt}{0.01pt}
+\TestDim{from node y}{\sankeyRouteInfo{r}{y}}{-5pt}{0.01pt}
+\TestEq{from node angle}{\sankeyRouteInfo{r}{angle}}{0}
+\TestEq{value}{\sankeyRouteInfo{r}{value}}{5}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base, route radius=5pt}
+\begin{sankey}[direction=down]
+  \sankeyFlows{a -> b : 10}
+  \sankeyStart[from node=b]{r}{5}
+  \sankeyRoute{r}{forward=10pt}
+\end{sankey}
+\TestDim{down x}{\sankeyRouteInfo{r}{x}}{5pt}{0.01pt}
+\TestDim{down y}{\sankeyRouteInfo{r}{y}}{-62pt}{0.01pt}
+\TestEq{down angle}{\sankeyRouteInfo{r}{angle}}{-90}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base, route radius=5pt}
+\begin{sankey}[direction=left]
+  \sankeyFlows{a -> b : 10}
+  \sankeyStart[from node=a]{r}{5}
+\end{sankey}
+\TestDim{left x}{\sankeyRouteInfo{r}{x}}{-2pt}{0.01pt}
+\TestEq{left angle}{\sankeyRouteInfo{r}{angle}}{180}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base, route radius=5pt}
+\begin{sankey}[direction=up]
+  \sankeyFlows{a -> b : 10}
+  \sankeyStart[from node=a]{r}{5}
+\end{sankey}
+\TestDim{up y}{\sankeyRouteInfo{r}{y}}{2pt}{0.01pt}
+\TestEq{up angle}{\sankeyRouteInfo{r}{angle}}{90}
+\end{tikzpicture}
+% routes get their own palette colors, in the order they start
+\begin{tikzpicture}
+\sankeySetup{unit=1pt}
+\sankeyStart[at={(0pt,0pt)}]{p}{1}
+\sankeyStart[at={(0pt,0pt)}]{q}{1}
+\sankeyStart[at={(0pt,0pt)}, color=blue]{s}{1}
+\ExplSyntaxOn
+\TestEq{route color p}{\__sankey_get:nn{rcol}{p}}{sankey-2}
+\TestEq{route color q}{\__sankey_get:nn{rcol}{q}}{sankey-3}
+\TestEq{route color s}{\__sankey_get:nn{rcol}{s}}{blue}
+\ExplSyntaxOff
+\end{tikzpicture}
+% the value is an expression
+\begin{tikzpicture}
+\sankeySetup{unit=1pt}
+\sankeyStart[at={(0pt,0pt)}]{r}{3*4+1}
+\TestEq{expression}{\sankeyRouteInfo{r}{value}}{13}
+\end{tikzpicture}
+\END
+\end{document}

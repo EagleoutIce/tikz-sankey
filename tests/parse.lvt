@@ -1,0 +1,136 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% chains, several flows, whitespace
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b -> c : 10, d->e:2 ,
+     f  ->  g  :  3 }
+\end{sankey}
+\TestEq{count}{\sankeyFlowCount}{4}
+\TestEq{1 from}{\sankeyFlowInfo{1}{from}}{a}
+\TestEq{1 to}{\sankeyFlowInfo{1}{to}}{b}
+\TestEq{2 from}{\sankeyFlowInfo{2}{from}}{b}
+\TestEq{2 to}{\sankeyFlowInfo{2}{to}}{c}
+\TestEq{2 value}{\sankeyFlowInfo{2}{value}}{10}
+\TestEq{3 no spaces}{\sankeyFlowInfo{3}{from}\sankeyFlowInfo{3}{to}\sankeyFlowInfo{3}{value}}{de2}
+\TestEq{4 spaces}{\sankeyFlowInfo{4}{from}\sankeyFlowInfo{4}{to}\sankeyFlowInfo{4}{value}}{fg3}
+\TestEq{c column}{\sankeyNodeInfo{c}{column}}{2}
+\end{tikzpicture}
+% options with commas, several flows after
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 10 [group=g, tint=50, opacity=.5], b -> c : 4 [color=red], c -> d : 1}
+\end{sankey}
+\TestEq{count}{\sankeyFlowCount}{3}
+\TestEq{group of 1}{\sankeyFlowInfo{1}{group}}{g}
+\TestEq{value 2}{\sankeyFlowInfo{2}{value}}{4}
+\TestEq{3 from}{\sankeyFlowInfo{3}{from}}{c}
+\TestEq{3 to}{\sankeyFlowInfo{3}{to}}{d}
+\end{tikzpicture}
+% the keys of a chain apply to every flow of it
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b -> c : 10 [group=g, style={draw, thick}]}
+\end{sankey}
+\TestEq{chain group 1}{\sankeyFlowInfo{1}{group}}{g}
+\TestEq{chain group 2}{\sankeyFlowInfo{2}{group}}{g}
+\end{tikzpicture}
+% keys of the command are the default of every flow
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows[group=outer]{a -> b : 3 [group=inner], b -> c : 1}
+\end{sankey}
+\TestEq{outer overridden}{\sankeyFlowInfo{1}{group}}{inner}
+\TestEq{outer default}{\sankeyFlowInfo{2}{group}}{outer}
+\end{tikzpicture}
+% values are floating point expressions
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 10/4, a -> c : 2*3+1, a -> d : 1e1, a -> e : 0.5+0.25 [group=g]}
+\end{sankey}
+\TestEq{div}{\sankeyFlowInfo{1}{value}}{2.5}
+\TestEq{mul}{\sankeyFlowInfo{2}{value}}{7}
+\TestEq{exp}{\sankeyFlowInfo{3}{value}}{10}
+\TestEq{sum}{\sankeyFlowInfo{4}{value}}{0.75}
+\TestEq{value of node}{\sankeyNodeInfo{a}{value}}{20.25}
+\end{tikzpicture}
+% \sankeyFlow and \sankeyAlluvium
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlow[group=g]{a}{b}{5}
+  \sankeyAlluvium[group=h]{x, y , z}{3}
+\end{sankey}
+\TestEq{count}{\sankeyFlowCount}{3}
+\TestEq{flow group}{\sankeyFlowInfo{1}{group}}{g}
+\TestEq{alluvium 1}{\sankeyFlowInfo{2}{from}\sankeyFlowInfo{2}{to}}{xy}
+\TestEq{alluvium 2}{\sankeyFlowInfo{3}{from}\sankeyFlowInfo{3}{to}}{yz}
+\TestEq{alluvium group}{\sankeyFlowInfo{3}{group}}{h}
+\TestEq{alluvium value}{\sankeyFlowInfo{3}{value}}{3}
+\end{tikzpicture}
+% nodes with labels: the label is the text after the =
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[every label/.style={}]
+  \sankeyNodes{a = \TYPE{label of a}, b = \TYPE{label of b}, c}
+  \sankeyNodes[column=2]{d = \TYPE{label of d}}
+  \sankeyFlows{a -> b : 1, b -> c : 1}
+\end{sankey}
+\TestEq{first column}{\sankeyNodeInfo{a}{column}}{0}
+\TestEq{explicit column}{\sankeyNodeInfo{d}{column}}{2}
+\TestEq{c column}{\sankeyNodeInfo{c}{column}}{2}
+\TestEq{value of d}{\sankeyNodeInfo{d}{value}}{0}
+\end{tikzpicture}
+% node declaration order gives the order in a column
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNodes{p, q, r}
+  \sankeyFlows{a -> r : 1, a -> q : 1, a -> p : 1}
+\end{sankey}
+\TestDim{p first}{\sankeyNodeInfo{p}{top}}{0pt}{0.01pt}
+\TestDim{q second}{\sankeyNodeInfo{q}{top}}{3pt}{0.01pt}
+\TestDim{r third}{\sankeyNodeInfo{r}{top}}{6pt}{0.01pt}
+\end{tikzpicture}
+% node names are trimmed
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyNode{ a }
+  \sankeyFlows{ a ->  b : 1}
+\end{sankey}
+\TestEq{trimmed}{\sankeyNodeInfo{a}{column}\sankeyNodeInfo{b}{column}}{01}
+\end{tikzpicture}
+% groups
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyGroup[color=red, label=The group]{g}
+  \sankeyFlows{a -> b : 1 [group=g]}
+\end{sankey}
+\TestEq{group color}{\sankeyGroupColor{g}}{red}
+\end{tikzpicture}
+% unparsable flows
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a : 3}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 1 : 2}
+\end{sankey}
+\end{tikzpicture}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}
+  \sankeyFlows{a -> b : 1, junk, c -> d : 2}
+  \sankeyAlluvium{a}{3}
+\end{sankey}
+\TestEq{good flows survive}{\sankeyFlowCount}{2}
+\end{tikzpicture}
+\END
+\end{document}
