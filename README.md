@@ -1,6 +1,6 @@
 # `tikz-sankey`, Sankey, alluvial and hand-steered flow diagrams with TikZ
 
-[![MIT License](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT) [![CI](https://github.com/EagleoutIce/tikz-sankey/actions/workflows/ci.yaml/badge.svg)](https://github.com/EagleoutIce/tikz-sankey/actions/workflows/ci.yaml)
+[![LPPL 1.3c](https://img.shields.io/badge/License-LPPL%201.3c-yellow.svg)](https://www.latex-project.org/lppl.txt) [![CI](https://github.com/EagleoutIce/tikz-sankey/actions/workflows/ci.yaml/badge.svg)](https://github.com/EagleoutIce/tikz-sankey/actions/workflows/ci.yaml)
 
 List the flows, get the diagram: `tikz-sankey` places the nodes in columns, sizes and stacks them, orders the bands so that they cross as little as they can, and labels the nodes without letting the labels collide (see the [documentation](https://raw.githubusercontent.com/EagleoutIce/tikz-sankey/gh-pages/build/tikz-sankey-doc.pdf)).
 
@@ -25,7 +25,7 @@ List the flows, get the diagram: `tikz-sankey` places the nodes in columns, size
 - **Routes**: bands steered by hand (`forward`, `left`, `right`, `bar`, `arrow`, `\sankeySplit`, `\sankeyMerge`) for diagrams no column layout describes.
 - Every node, label and route port is a named TikZ node or coordinate, and `\sankeyNodeInfo` and friends read the layout, so you can draw onto a diagram.
 
-`tikz-sankey` is developed by *Florian Sihler* under the [MIT License](LICENSE). Contributions are welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+`tikz-sankey` is developed by *Florian Sihler* under the [LaTeX Project Public License 1.3c](LICENSE). Contributions are welcome (see [CONTRIBUTING.md](CONTRIBUTING.md)).
 
 ## Building
 
