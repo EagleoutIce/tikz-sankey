@@ -1,5 +1,5 @@
 # everything latexmk makes goes to build/; only the PDFs are copied back next to the sources
-@default_files = ('example.tex', 'tikz-sankey-doc.tex');
+@default_files = ('example.tex', 'tikz-sankey-doc.tex', 'readme-examples.tex');
 $pdf_mode = 1;
 $pdf_update_method = 1;
 $out_dir = 'build';

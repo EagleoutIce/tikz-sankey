@@ -48,12 +48,13 @@ jobs:
         uses: actions/checkout@v4
         with:
           submodules: true
-      - name: 📄 Compile the manual and the example
+      - name: 📄 Compile the manual, the example and the pictures of the README
         uses: xu-cheng/latex-action@v3
         with:
           root_file: |
             example.tex
             tikz-sankey-doc.tex
+            readme-examples.tex
       - name: No undefined references, no unresolved index or rerun requests
         run: |
           if grep -E "There were undefined references|Rerun to get|Label\(s\) may have changed|Hyper reference .* undefined" build/tikz-sankey-doc.log build/example.log; then
@@ -66,6 +67,7 @@ jobs:
           path: |
             build/example.pdf
             build/tikz-sankey-doc.pdf
+            build/readme-examples.pdf
 
   package:
     name: CTAN archive
@@ -107,12 +109,14 @@ jobs:
       - name: Install poppler for the preview
         run: sudo apt-get update && sudo apt-get install -y poppler-utils
       - name: 🖼️ Generate preview
-        run: pdftoppm -png -r 400 -f 1 -l 1 ./build/example.pdf example
+        run: |
+          pdftoppm -png -r 400 -f 1 -l 1 ./build/example.pdf example
+          pdftoppm -png -r 200 ./build/readme-examples.pdf readme-example
       - name: Commit
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action"
-          git add -f "./build/example.pdf" "example-1.png" "./build/tikz-sankey-doc.pdf"
+          git add -f "./build/example.pdf" "example-1.png" "./build/tikz-sankey-doc.pdf" readme-example-*.png
           git commit -m "Newly compiled data" || echo "nothing new to commit"
       - name: Push changes
         uses: ad-m/github-push-action@master

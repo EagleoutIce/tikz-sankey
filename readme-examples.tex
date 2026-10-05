@@ -1,0 +1,30 @@
+% Florian Sihler, 2026
+% Licensed under the LPPL 1.3c, https://www.latex-project.org/lppl.txt
+% The first two examples of the manual, as pictures for the README (built by the CI)
+\documentclass[border=6pt,multi=readmeexample]{standalone}
+\usepackage[T1]{fontenc}
+\usepackage{tikz-sankey}
+\newenvironment{readmeexample}{\sffamily}{}
+\begin{document}
+\begin{readmeexample}
+\sankeyDiagram[
+   label={\sankeyName\space\sankeyValue}]{
+   pizza -> dinner : 4,
+   pizza -> fridge : 6,
+   cake -> fridge : 3,
+   cake -> neighbour : 2,
+   fridge -> breakfast : 5,
+   fridge -> bin : 4
+}
+\end{readmeexample}
+\begin{readmeexample}
+\sankeyDiagram[black and white]{
+   books -> read : 5,
+   books -> lent : 3,
+   books -> shelf : 2,
+   books -> lost : 2,
+   read -> kept : 1,
+   read -> sold : 4
+}
+\end{readmeexample}
+\end{document}
