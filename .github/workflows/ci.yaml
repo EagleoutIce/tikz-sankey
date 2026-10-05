@@ -5,122 +5,76 @@ name: CI
   pull_request:
   workflow_dispatch:
 
-# a newer push to the same branch makes the running checks of the older one pointless
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  # l3build builds in $TMPDIR (see build.lua); inside the workspace, the results stay readable
-  # after the container of the LaTeX action is gone
-  TMPDIR: /github/workspace/.l3build
-
 jobs:
   tests:
-    name: Regression tests (pdfTeX, LuaTeX) and example
+    name: Regression tests
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: texlive/texlive:latest
     steps:
-      - name: Checkout git repository
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-      - name: 🧪 l3build check, then compile the example
-        uses: xu-cheng/latex-action@v3
-        with:
-          extra_system_packages: "diffutils" # l3build needs GNU diff, not busybox
-          pre_compile: mkdir -p "$TMPDIR" && l3build check
-          root_file: example.tex
+      - uses: actions/checkout@v4
+      - name: l3build check
+        run: l3build check
       - name: Keep the diffs of failed tests
         if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: test-diffs
           path: |
-            .l3build/tikz-sankey/test/*.diff
-            .l3build/tikz-sankey/test/*.log
+            /tmp/tikz-sankey/test/*.diff
+            /tmp/tikz-sankey/test/*.log
           if-no-files-found: ignore
 
   docs:
-    name: Manual
+    name: Manual, example and README pictures
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container: texlive/texlive:latest
     steps:
-      - name: Checkout git repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           submodules: true
-      - name: 📄 Compile the manual, the example and the pictures of the README
-        uses: xu-cheng/latex-action@v3
-        with:
-          root_file: |
-            example.tex
-            tikz-sankey-doc.tex
-            readme-examples.tex
-      - name: No undefined references, no unresolved index or rerun requests
+      - name: latexmk
+        run: latexmk
+      - name: No undefined references or rerun requests
         run: |
-          if grep -E "There were undefined references|Rerun to get|Label\(s\) may have changed|Hyper reference .* undefined" build/tikz-sankey-doc.log build/example.log; then
+          if grep -E "There were undefined references|Rerun to get|Label\(s\) may have changed|Hyper reference .* undefined" build/*.log; then
             exit 1
           fi
-      - name: Keep the PDFs
-        uses: actions/upload-artifact@v4
+      - name: Render the pictures
+        run: |
+          gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE=png16m -dTextAlphaBits=4 -dGraphicsAlphaBits=4 -r400 -dFirstPage=1 -dLastPage=1 -o build/example-1.png build/example.pdf
+          gs -q -dSAFER -dBATCH -dNOPAUSE -sDEVICE=png16m -dTextAlphaBits=4 -dGraphicsAlphaBits=4 -r200 -o build/readme-example-%d.png build/readme-examples.pdf
+      - uses: actions/upload-artifact@v4
         with:
           name: pdfs
           path: |
-            build/example.pdf
-            build/tikz-sankey-doc.pdf
-            build/readme-examples.pdf
-
-  package:
-    name: CTAN archive
-    runs-on: ubuntu-latest
-    needs: [tests, docs]
-    steps:
-      - name: Checkout git repository
-        uses: actions/checkout@v4
-        with:
-          submodules: true
-          fetch-depth: 0 # build.lua reads the version from the tags
-      - name: 📦 l3build ctan
-        uses: xu-cheng/latex-action@v3
-        with:
-          extra_system_packages: "diffutils git"
-          pre_compile: mkdir -p "$TMPDIR" && git config --global --add safe.directory /github/workspace && l3build ctan
-          root_file: example.tex
-      - name: Keep the archive
-        uses: actions/upload-artifact@v4
-        with:
-          name: ctan
-          path: tikz-sankey-ctan.zip
+            build/*.pdf
+            build/*.png
 
   publish:
-    name: Publish PDFs and preview to gh-pages
+    name: Publish to gh-pages
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     needs: [tests, docs]
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     permissions:
       contents: write
     steps:
-      - name: Checkout git repository
-        uses: actions/checkout@v4
-      - name: Fetch the PDFs
-        uses: actions/download-artifact@v4
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
         with:
           name: pdfs
           path: build
-      - name: Install poppler for the preview
-        run: sudo apt-get update && sudo apt-get install -y poppler-utils
-      - name: 🖼️ Generate preview
+      - name: Push
         run: |
-          pdftoppm -png -r 400 -f 1 -l 1 ./build/example.pdf example
-          pdftoppm -png -r 200 ./build/readme-examples.pdf readme-example
-      - name: Commit
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add -f "./build/example.pdf" "example-1.png" "./build/tikz-sankey-doc.pdf" readme-example-*.png
-          git commit -m "Newly compiled data" || echo "nothing new to commit"
-      - name: Push changes
-        uses: ad-m/github-push-action@master
-        with:
-          branch: gh-pages
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          force: true
+          mv build/*.png .
+          git config user.email "action@github.com"
+          git config user.name "GitHub Action"
+          git add -f build/example.pdf build/tikz-sankey-doc.pdf example-1.png readme-example-*.png
+          git commit -m "Newly compiled data"
+          git push -f origin HEAD:gh-pages
