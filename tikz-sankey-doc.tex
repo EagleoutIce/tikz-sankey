@@ -22,6 +22,12 @@
 \usepackage{tikz-sankey}
 \usetikzlibrary{patterns,decorations.pathreplacing}
 \usepackage{hyperref}
+\usepackage{cleveref}
+% the link covers the number only
+\crefformat{section}{Section~#2#1#3}
+\crefformat{subsection}{Section~#2#1#3}
+\Crefformat{section}{Section~#2#1#3}
+\Crefformat{subsection}{Section~#2#1#3}
 \usepackage[underline]{code-link}
 \CodeLinkSetup{underline-color=skcmd!45}
 \usepackage{imakeidx}
@@ -200,13 +206,87 @@
       \clist_map_inline:nn
          {
             gradient/flow~color, forward/flow~color, backward/flow~color, source/flow~color, target/flow~color,
-            justify/layout, decreasing/node~order, increasing/node~order, sorted/flow~order
+            group/flow~color, auto/flow~color
          }
          { \__skdoc_value:w #1 \q_stop }
+      \clist_map_inline:nn { label~position, value~label~position }
+         {
+            \clist_map_inline:nn { before, after, inside, none, left, right, above, below, auto }
+               { \__skdoc_value:nn {#1} {##1} }
+         }
+      \clist_map_inline:nn { ahead, behind, left, right, north, east, south, west }
+         { \__skdoc_value:nn { label~side } {#1} }
       \clist_map_inline:nn { column, value, in, out, color, top, bottom, height, start, end }
          { \use:e { \exp_not:N \CodeLinkRegister [ group = key , label = info:node ] { \c_left_brace_str #1 \c_right_brace_str } } }
    }
-\cs_new_protected:Npn \__skdoc_value:w #1 / #2 \q_stop { \CodeLinkRegister[group=val,label=key:#2]{#1} }
+% A value in a listing, right after the `=' of a key, is a value of that key: it is shown as a
+% value and links to the key if the manual lists it for the key (\choices, \V in \key, or the
+% list above), else it stays plain, even if a key of the same name exists (layout=right,
+% flow color=group). Commands, as in label=\sankeyName, are looked up as usual. The values of a
+% key are written to the .aux file, as listings may come before the key is documented.
+\cs_new_protected:Npn \__skdoc_value:w #1 / #2 \q_stop { \__skdoc_value:nn {#2} {#1} }
+\cs_new_protected:Npn \__skdoc_value:nn #1 #2 { \cs_gset:cpn { skdoc@v@ #1 = #2 } { } }
+\cs_new_protected:Npn \skdocvalue #1 #2 { \__skdoc_value:nn {#1} {#2} }
+\tl_new:N \l__skdoc_curkey_tl
+\cs_new_protected:Npn \__skdoc_document_value:n #1
+   {
+      \tl_if_empty:NF \l__skdoc_curkey_tl
+         {
+            \cs_if_exist:cF { skdoc@w@ \l__skdoc_curkey_tl = #1 }
+               {
+                  \cs_gset:cpn { skdoc@w@ \l__skdoc_curkey_tl = #1 } { }
+                  \exp_args:Nc \iow_now:Ne { @mainaux } { \token_to_str:N \skdocvalue { \l__skdoc_curkey_tl } { \tl_to_str:n {#1} } }
+               }
+         }
+   }
+\RenewDocumentCommand \V { m } { \__skdoc_document_value:n {#1} \T{\color{skval}#1} }
+\bool_new:N \g__skdoc_aftereq_bool
+\str_new:N \g__skdoc_lastkey_str
+\cs_new_eq:NN \__skdoc_format:nnn \__codelink_format:nnn
+\cs_gset_protected:Npn \__codelink_format:nnn #1 #2 #3
+   {
+      \str_if_eq:nnT {#2} { key }
+         {
+            \str_set:Nn \l_tmpb_str {#1}
+            \str_if_eq:eeT { \str_range:Nnn \l_tmpb_str { 1 } { 4 } } { key: }
+               { \str_gset:Ne \g__skdoc_lastkey_str { \str_range:Nnn \l_tmpb_str { 5 } { -1 } } }
+         }
+      \__skdoc_format:nnn {#1} {#2} {#3}
+   }
+\makeatletter
+\lst@AddToHook { OutputOther }
+   {
+      \str_set:Ne \l__skdoc_cs_str { \tl_to_str:o { \the \lst@token } }
+      \bool_gset:Nn \g__skdoc_aftereq_bool
+         {
+            \str_if_eq_p:ee { \str_range:Nnn \l__skdoc_cs_str { -1 } { -1 } } { = }
+            || \str_if_eq_p:ee { \str_range:Nnn \l__skdoc_cs_str { -2 } { -1 } } { = \c_left_brace_str }
+         }
+      \bool_if:NF \g__skdoc_aftereq_bool { \str_gclear:N \g__skdoc_lastkey_str }
+   }
+\cs_new_eq:NN \__skdoc_lookup: \__codelink_lst_lookup:
+\cs_gset_protected:Npn \__codelink_lst_lookup:
+   {
+      \bool_lazy_and:nnTF { \g__skdoc_aftereq_bool } { ! \str_if_eq_p:ee { \str_head:N \l_tmpa_str } { \c_backslash_str } }
+         {
+            \cs_if_exist:cTF { skdoc@v@ \g__skdoc_lastkey_str = \l_tmpa_str }
+               {
+                  \cs_set_eq:NN \__codelink_old_style:n \lst@thestyle
+                  \__codelink_lst_found:nn { key: \g__skdoc_lastkey_str } { val }
+                  \bool_set_true:N \l__codelink_word_bool
+               }
+               { \bool_set_true:N \l__codelink_word_bool }
+         }
+         { \__skdoc_lookup: }
+   }
+\cs_new_eq:NN \__skdoc_output: \__codelink_lst_output:
+\cs_gset_protected:Npn \__codelink_lst_output:
+   {
+      \__skdoc_output:
+      \bool_gset_false:N \g__skdoc_aftereq_bool
+      \str_gclear:N \g__skdoc_lastkey_str
+   }
+\makeatother
 % \key{name}{value}<default>: documents a key; <@phrase> reads `by default phrase'. Without it, its default is the
 % one of the package, if it has one. A key of several kinds has one link target and one index entry.
 \NewDocumentCommand \key { m m d<> }
@@ -214,7 +294,9 @@
       \__skdoc_target:n {#1}
       \T{\bfseries\color{skkey}#1}
       \index{#1@\texttt{\bfseries\color{skkey}#1}~\textcolor{gray}{(key)}|hyperpage}
+      \tl_set:Nn \l__skdoc_curkey_tl {#1}
       \tl_if_blank:nF {#2} { \T{=}#2 }
+      \tl_clear:N \l__skdoc_curkey_tl
       \IfValueTF {#3}
          {
             \tl_if_eq:nnF {#3} { - }
@@ -272,7 +354,7 @@
       alluvial = { the~look~of~\sklink{https://corybrunson.github.io/ggalluvial/}{ggalluvial}:~gray~strata~as~wide~as~their~labels },
       energy = { thin~dark~nodes,~wide~gaps,~flows~in~the~color~of~their~target },
       mermaid = { the~look~of~\sklink{https://mermaid.js.org/syntax/sankey.html}{Mermaid},~used~for~its~diagrams },
-      bucket~bars = { bars~of~buckets~(Section~\ref{sec:buckets}) },
+      bucket~bars = { bars~of~buckets~(\cref{sec:buckets}) },
       black~and~white = { no~colors:~black~nodes,~gray~flows~and~serif~labels },
       values = { value~labels~with~the~values },
       percentages = { value~labels~with~the~shares },
@@ -311,6 +393,7 @@
 \NewDocumentCommand \choices { m }
    {
       \seq_set_from_clist:Nn \l__skdoc_seq {#1}
+      \clist_map_function:nN {#1} \__skdoc_document_value:n
       \seq_set_map:NNn \l__skdoc_seq \l__skdoc_seq { \exp_not:n { \textcolor{skval}{##1} } }
       \T{ \seq_use:Nn \l__skdoc_seq { \textbar } }
    }
@@ -342,7 +425,7 @@ snacks sweet,couch,6,day
 \maketitle
 \thispagestyle{empty}
 
-\noindent\T{tikz-sankey} draws flows between nodes, each flow as wide as its value. You list the flows. The package computes the columns, stacks and sizes the nodes, orders the bands, and places the labels so that they do not collide:
+\noindent\T{tikz-sankey} draws flows between nodes, each flow as thick as its value. You list the flows. The package computes the columns, stacks and sizes the nodes, orders the bands, and places the labels so that they do not collide:
 \begin{example}
 \sankeyDiagram[
    label={\sankeyName\space\sankeyValue}]{
@@ -365,7 +448,7 @@ The preset \opt{black and white} draws without colors, in black and gray with se
    read -> sold : 4
 }
 \end{example}
-Flows can also come from loops, CSV files and Mermaid. Diagrams that follow no columns are drawn as routes (Section~\ref{sec:routes}). Nodes, labels and routes are named Ti\emph{k}Z nodes.
+Flows can also come from loops, CSV files and Mermaid. Diagrams that follow no columns are drawn as routes (\cref{sec:routes}). Nodes, labels and routes are named Ti\emph{k}Z nodes.
 \medskip
 \setcounter{tocdepth}{\sectiontocdepth}
 \tableofcontents
@@ -374,16 +457,16 @@ Flows can also come from loops, CSV files and Mermaid. Diagrams that follow no c
 \section{Diagrams}\label{sec:diagrams}
 A diagram consists of nodes and of flows between them. The flows are given. The nodes follow from them and need a declaration only to change how they look.
 \begin{description}
-\item[\T{\textbackslash begin\{}\env{sankey}\T{\}}\oarg{keys} \dots{} \T{\textbackslash end\{}\envref{sankey}\T{\}}] collects nodes and flows inside a |tikzpicture| and draws the diagram at its end. The picture can draw onto it afterwards (Section~\ref{sec:annotate}).
+\item[\T{\textbackslash begin\{}\env{sankey}\T{\}}\oarg{keys} \dots{} \T{\textbackslash end\{}\envref{sankey}\T{\}}] collects nodes and flows inside a |tikzpicture| and draws the diagram at its end. The picture can draw onto it afterwards (\cref{sec:annotate}).
 \item[\T{\textbackslash begin\{}\env{sankeypicture}\T{\}}\oarg{keys} \dots{} \T{\textbackslash end\{}\envref{sankeypicture}\T{\}}] a |tikzpicture| (style \skstyle{every picture}) with a \T{sankey} environment inside.
-\item[\api{sankeyDiagram}\oarg{keys}\marg{flows}] a \T{sankeypicture} of flows as for \cmd{sankeyFlows}.
+\item[\api{sankeyDiagram}\oarg{keys}\marg{flows}] a whole diagram in one command (it is  short for a \T{sankeypicture} with the \meta{keys} that contains only \cmd{sankeyFlows}\marg{flows}, so \meta{flows} is written as for \cmd{sankeyFlows}).
 \item[\api{sankeySetup}\marg{keys}] sets keys for the following diagrams in the current group.
 \end{description}
 A key with the values \T{true} and \T{false} given alone means \T{true}.
 
 \subsection{Flows}
 \begin{description}
-\item[\api{sankeyFlows}\oarg{keys}\marg{list}] flows separated by commas, each \T{\meta{from} -> \meta{to} : \meta{value}}, optionally followed by \T{[\meta{keys}]}. A node may carry keys in brackets after its name, \T{\meta{name}[\meta{node keys}]}, as \cmd{sankeyNode} would give them, for example |salt[color=red]|. A number in the brackets is its \opt{column} (Section~\ref{sec:layout}). A chain \T{a -> b -> c : 5} is an \emph{alluvium}: two flows with the same value and keys. The keys in front apply to every flow of the list. Braces keep commas, colons and arrows inside a name, as in \T{\{a, b\} -> c : 1}, macros in names and values are expanded, and a comma after the last flow does no harm.
+\item[\api{sankeyFlows}\oarg{keys}\marg{list}] flows separated by commas, each \T{\meta{from} -> \meta{to} : \meta{value}}, optionally followed by \T{[\meta{keys}]}. A node may carry keys in brackets after its name, \T{\meta{name}[\meta{node keys}]}, as \cmd{sankeyNode} would give them, for example |salt[color=red]|. A number in the brackets is its \opt{column} (\cref{sec:layout}). A chain \T{a -> b -> c : 5} is an \emph{alluvium}: two flows with the same value and keys. The keys in front apply to every flow of the list. Braces keep commas, colons and arrows inside a name, as in \T{\{a, b\} -> c : 1}, macros in names and values are expanded, and a comma after the last flow does no harm.
 \item[\api{sankeyFlow}\oarg{keys}\marg{from}\marg{to}\marg{value}] one flow, for example inside a |\foreach|. The value is a floating point expression. A flow of value 0 is laid out but not drawn. A negative one is dropped with a warning.
 \item[\api{sankeyAlluvium}\oarg{keys}\marg{nodes}\marg{value}] a chain, the nodes given as a list.
 \end{description}
@@ -402,7 +485,7 @@ A key with the values \T{true} and \T{false} given alone means \T{true}.
 \end{example}
 Keys of a flow:
 \begin{description}
-\item[\key{group}{\meta{name}}] its group (Section~\ref{sec:colors}), declared if unknown.
+\item[\key{group}{\meta{name}}] its group (\cref{sec:colors}), declared if unknown.
 \item[\key{color}{\meta{color}}] one color for the flow, overriding \opt{flow color}.
 \item[\key{from color}{\meta{color}}<@the color of its source>, \key{to color}{\meta{color}}<@the color of its target>] the ends of its gradient.
 \item[\key{tint}{\meta{0--100}}<@the value of \opt{flow tint}>, \key{opacity}{\meta{0--1}}<@the value of \opt{flow opacity}>] the tint and the opacity of this flow.
@@ -418,10 +501,10 @@ Keys of a flow:
 Keys of a node:
 \begin{description}
 \item[\key{text}{\meta{text}}<@its name up to an \T{@}>] what \cmd{sankeyName} shows.
-\item[\key{column}{\meta{integer}}<@from the flows>] its column, counted from 0 (Section~\ref{sec:layout}).
+\item[\key{column}{\meta{integer}}<@from the flows>] its column, counted from 0 (\cref{sec:layout}).
 \item[\key{value}{\meta{expression}}<@the larger of its in- and outflow>] its size. A value smaller than the flows gives a warning and is raised.
 \item[\key{color}{\meta{color}}] its color, which its flows take as well.
-\item[\key{label}{\meta{text}}<->, \key{value label}{\meta{text}}<->] its labels, overriding the templates (Section~\ref{sec:labels}).
+\item[\key{label}{\meta{text}}<->, \key{value label}{\meta{text}}<->] its labels, overriding the templates (\cref{sec:labels}).
 \item[\key{label position}{\meta{side}}, \key{value label position}{\meta{side}}] where they go.
 \item[\key{label style}{\meta{TikZ keys}}, \key{value label style}{\meta{TikZ keys}}, \key{style}{\meta{TikZ keys}}] added to the labels and the node.
 \item[\key{skip}{\meta{length}}<0pt>] extra space before the node, moving the nodes after it.
@@ -461,12 +544,12 @@ A name may end in \T{@\meta{anything}}: \T{happy@mon} and \T{happy@tue} are two 
 
 \subsection{Data from files}\label{sec:data}
 \begin{description}
-\item[\api{sankeyCSV}\oarg{keys}\marg{file}] reads flows from a CSV file, into a \T{sankey} environment or as a \T{sankeypicture} of its own. Fields in double quotes may contain the separator. \T{""} in them is one quote. Lines with fewer than three fields or no number as value are skipped with a warning.
+\item[\api{sankeyCSV}\oarg{keys}\marg{file}] reads flows from a CSV file, into a \T{sankey} environment or as a \T{sankeypicture} of its own. Fields in double quotes may contain the separator. Typing two double quotes (\T{""}) inside such a field gives a single double quote. Lines with fewer than three fields or no number as value are skipped with a warning.
 \item[\key{csv columns}{\meta{list}}] the meaning of the fields: \T{from}, \T{to}, \T{value}, \T{group}, \T{color}. Other names are ignored.
 \item[\key{csv separator}{\meta{character}}, \key{csv header}{\choices{auto,true,false}}] \T{auto} treats the first line as a header if its value is not a number.
 \item[\key{group node color}{\V{auto}\textbar\meta{color}}] a color for all nodes when flows have groups, so that only the groups are colored.
 \end{description}
-Flows with a group take the color of their group, and a legend lists the groups.
+Flows with a group take the color of their group, and a legend lists the groups (\cref{sec:colors}).
 \datafile{snacks.csv}
 \begin{example}
 \sankeyCSV[values, group colors=
@@ -557,7 +640,7 @@ To place a single node elsewhere, give it a column: in a list of flows, \T{\meta
 \item[\key{group palette}{\meta{list of colors}}<@the colors of \opt{palette}>] colors for groups without one.
 \item[\api{sankeyGroup}\oarg{keys}\marg{name}] declares a group. Its keys are \key{color}{\meta{color}} and \key{label}{\meta{text}}<@the name of the group> for the legend.
 \end{description}
-Below, \opt{node colors} gives \T{tea} its color, and the flows take the colors of their groups. The group \T{hot} has its own color, \T{iced} and \T{fresh} take the colors of \opt{group palette} in turn.
+Below, \opt{node colors} gives \T{tea} its color, and the flows take the colors of their groups. The other nodes keep the colors of \opt{palette}, so \T{juice} is the fourth node and takes its fourth color (\T{group node color=black!40} would give them all one color instead). The group \T{hot} has its own color, \T{iced} and \T{fresh} take the colors of \opt{group palette} in turn.
 \begin{example}
 \sankeyDiagram[flow color=group,
    node colors={tea=sankey-3},
@@ -616,7 +699,7 @@ mode & a flow is painted & in ggalluvial\\\midrule
 \end{example}
 
 \section{Labels and numbers}\label{sec:labels}
-Each node has a \emph{label} and a \emph{value label}. Both are templates: the keys \opt{label} and \opt{value label} hold text, typeset once for each node, in which these macros stand for the node at hand. Their numbers are formatted as Section~\ref{sec:numbers} describes.
+Each node has a \emph{label} and a \emph{value label}. The label names the node (i.e., how to reference it with Ti\emph{k}Z) and is drawn by default (\T{label=\textbackslash sankeyName}). The value label shows its number and is empty, hence not drawn, unless set, for example by the presets \opt{values} or \opt{percentages}. With \T{label position=auto} the two go on opposite sides of the node. Both are templates: the keys \opt{label} and \opt{value label} hold text, typeset once for each node, in which these macros stand for the node at hand. Their numbers are formatted as \cref{sec:numbers} describes.
 \begin{description}
 \item[\api{sankeyName}] its text: the key \opt{text} of the node, else its name up to an \T{@}.
 \item[\api{sankeyValue}] its value (the key \opt{value}, else the larger of in- and outflow), formatted as \cmd{sankeyNumber} formats numbers.
@@ -666,7 +749,7 @@ The key \key{siunitx}{}<-> formats numbers with |\num| and shares with |\qty{..}
 \end{example}
 
 \section{Presets}\label{sec:presets}
-A preset is a style that sets the keys listed with it. Keys given after it override them. The \opt{siunitx} key of Section~\ref{sec:labels} works the same way. The examples draw these flows:
+A preset is a style that sets the keys listed with it. Keys given after it override them. The \opt{siunitx} key of \cref{sec:labels} works the same way. The examples draw these flows:
 
 \noindent
 \begin{minipage}[t]{\dimexpr.5\linewidth-.5em}
