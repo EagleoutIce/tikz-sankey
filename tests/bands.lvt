@@ -1,0 +1,45 @@
+\documentclass{article}
+\usepackage{tikz-sankey}
+\input{regression-test}
+\input{sankey-test}
+\begin{document}
+\START
+% opaque bands reach a little over their neighbour below against the thin lines of anti-aliasing,
+% but never out of the nodes they start or end at: not below the last band of a node, nor into
+% the room of a node that is larger than its flows
+\newcounter{case}
+% \Case{keys}{flows}
+\NewDocumentCommand\Case{m m}{%
+  \stepcounter{case}%
+  \begin{tikzpicture}
+  \StartBands
+  \begin{sankey}[name prefix=c\arabic{case}-, #1]
+    \expandafter\sankeyFlows\expandafter{#2}
+  \end{sankey}
+  \CheckBands{c\arabic{case}-}
+  \end{tikzpicture}}
+\def\H{happy@mon -> happy@tue : 5, happy@mon -> grumpy@tue : 2, grumpy@mon -> grumpy@tue : 3,
+  grumpy@mon -> happy@tue : 1, happy@tue -> happy@wed : 4, happy@tue -> sleepy@wed : 2, grumpy@tue -> sleepy@wed : 5}
+\def\A{allowance -> candy : 5, allowance -> savings : 4, birthday -> savings : 6, birthday -> comics : 2, savings -> bike : 8}
+\def\L{a -> b : 3, b -> c : 2, a -> c : 4, a -> d : 1, d -> c : 1}
+\Case{}{\H}
+\Case{seam=2pt}{\H}
+\Case{seam=2pt, unit=1mm}{\A}
+\Case{seam=2pt, direction=down}{\A}
+\Case{seam=2pt, direction=left}{\H}
+\Case{seam=2pt, direction=up}{\H}
+\Case{seam=2pt, port align=center}{\A}
+\Case{seam=2pt, layout=justify}{\A}
+\Case{seam=2pt, flow order=group}{\A}
+\Case{seam=2pt, long flows=route}{\L}
+\Case{seam=2pt, long flows=direct}{\L}
+% a node larger than its flows: the room below the last band stays empty
+\begin{tikzpicture}
+\StartBands
+\begin{sankey}[name prefix=w-, seam=2pt]
+  \sankeyNode[value=10]{wallet}
+  \sankeyFlows{wallet -> tea : 3, wallet -> cake : 4}
+\end{sankey}
+\CheckBands{w-}
+\end{tikzpicture}
+\end{document}

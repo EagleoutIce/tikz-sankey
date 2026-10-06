@@ -169,3 +169,69 @@
   }
 \makeatother
 \ExplSyntaxOff
+
+% \StartBands, then \CheckBands{prefix} after \end{sankey}: each end of a band (its upper and its
+% lower corner) lies in the node it starts or ends at; no band sticks out above or below the node,
+% neither below its last band nor into room the flows leave free
+\ExplSyntaxOn
+\makeatletter
+\seq_new:N \g_sankeytest_ends_seq
+\cs_new_protected:Npn \sankeytest_end:nn #1#2
+  {
+    \sankey@getpoint {#1}
+    \tl_set:Ne \l_tmpa_tl { { \dim_to_decimal:n { \sankey@px } } { \dim_to_decimal:n { \sankey@py } } }
+    \sankey@getpoint {#2}
+    \seq_gput_right:Ne \g_sankeytest_ends_seq
+      { \l_tmpa_tl { \dim_to_decimal:n { \sankey@px } } { \dim_to_decimal:n { \sankey@py } } }
+  }
+\cs_new_eq:NN \sankeytest_ribbon:nnnnnnnnn \sankey@ribbon
+\NewDocumentCommand \StartBands { }
+  {
+    \seq_gclear:N \g_sankeytest_ends_seq
+    \long\def\sankey@ribbon##1##2##3##4##5##6##7##8##9
+      {
+        \sankeytest_end:nn {##2} {##9}
+        \sankeytest_end:nn {##5} {##6}
+        \sankeytest_ribbon:nnnnnnnnn {##1} {##2} {##3} {##4} {##5} {##6} {##7} {##8} {##9}
+      }
+  }
+\tl_new:N \l_sankeytest_box_tl
+\NewDocumentCommand \CheckBands { m }
+  {
+    \cs_set_eq:NN \sankey@ribbon \sankeytest_ribbon:nnnnnnnnn
+    \seq_map_inline:Nn \g__sankey_nodes_seq
+      {
+        \__sankey_has:nnF { dummy } {##1}
+          {
+            \pgfutil@ifundefined { pgf@sh@ns@ #1 ##1 } { }
+              {
+                \pgfpointanchor { #1 ##1 } { south~west }
+                \tl_set:Ne \l_sankeytest_box_tl { { \dim_to_decimal:n { \pgf@x } } { \dim_to_decimal:n { \pgf@y } } }
+                \pgfpointanchor { #1 ##1 } { north~east }
+                \tl_put_right:Ne \l_sankeytest_box_tl { { \dim_to_decimal:n { \pgf@x } } { \dim_to_decimal:n { \pgf@y } } }
+                \seq_map_inline:Nn \g_sankeytest_ends_seq
+                  { \exp_after:wN \sankeytest_band_end:nnnnnnnnn \l_sankeytest_box_tl ####1 {##1} }
+              }
+          }
+      }
+  }
+\prg_new_conditional:Npnn \sankeytest_inside:nnnnnn #1#2#3#4#5#6 { p } % box, point
+  {
+    \bool_lazy_all:nTF
+      {
+        { \fp_compare_p:nNn {#5} > { #1 - .01 } } { \fp_compare_p:nNn {#5} < { #3 + .01 } }
+        { \fp_compare_p:nNn {#6} > { #2 - .01 } } { \fp_compare_p:nNn {#6} < { #4 + .01 } }
+      }
+      { \prg_return_true: } { \prg_return_false: }
+  }
+% the box of the node (x min, y min, x max, y max), the upper and the lower corner of the end of
+% a band (x, y each), the node: if the upper corner is in the node, so is the lower one
+\cs_new_protected:Npn \sankeytest_band_end:nnnnnnnnn #1#2#3#4#5#6#7#8#9
+  {
+    \bool_lazy_and:nnT
+      { \sankeytest_inside_p:nnnnnn {#1} {#2} {#3} {#4} {#5} {#6} }
+      { ! \sankeytest_inside_p:nnnnnn {#1} {#2} {#3} {#4} {#7} {#8} }
+      { \msg_error:nneee { sankey-test } { fail } { band~at~#9 } { (#7pt,~#8pt) } { within~(#1pt,~#2pt)~to~(#3pt,~#4pt) } }
+  }
+\makeatother
+\ExplSyntaxOff

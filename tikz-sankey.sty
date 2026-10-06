@@ -205,6 +205,10 @@
 \bool_new:N \l__sankey_autosep_bool
 \fp_new:N \l__sankey_nround_fp
 \fp_new:N \l__sankey_seam_fp
+\fp_new:N \l__sankey_sa_fp
+\fp_new:N \l__sankey_sb_fp
+\tl_new:N \l__sankey_bside_tl
+\tl_set:Nn \l__sankey_bside_tl { incur }
 \fp_new:N \l__sankey_oround_fp
 \tl_new:N \l__sankey_outline_tl
 \bool_new:N \l__sankey_autowidth_bool
@@ -1472,11 +1476,22 @@
 \cs_new_protected:Npn \__sankey_ribbon:nnnnn #1#2#3#4#5 % u start, u end, s start, s end, curvature
    {
       % against the thin lines of anti-aliasing: the band reaches a little under the nodes at its
-      % ends, and, if it is opaque, a little over its neighbour below
+      % ends, and, if it is opaque, a little over its neighbour below; only at an end where another
+      % band goes on below it, so that it never sticks out below a node
+      \fp_set_eq:NN \l__sankey_sa_fp \l__sankey_s_fp
+      \fp_set_eq:NN \l__sankey_sb_fp \l__sankey_s_fp
       \bool_lazy_and:nnT { \fp_compare_p:nNn \l__sankey_opacity_fp > { .999 } } { \str_if_eq_p:Vn \l__sankey_outline_tl { none } }
-         { \fp_add:Nn \l__sankey_s_fp { \l__sankey_seam_fp } }
+         {
+            \fp_add:Nn \l__sankey_sa_fp { \__sankey_below:Vnn \l__sankey_a_tl { outcur } { #3 + \l__sankey_s_fp } }
+            \fp_add:Nn \l__sankey_sb_fp { \__sankey_below:VVn \l__sankey_b_tl \l__sankey_bside_tl { #4 + \l__sankey_s_fp } }
+         }
       \__sankey_ribbon_seam:nnnnn {#1} {#2} {#3} {#4} {#5}
    }
+% the seam below a band that ends at #3 on side #2 (outcur or incur) of node #1: none if no
+% other band begins there, that is, if the band is the last one on that side
+\cs_new:Npn \__sankey_below:nnn #1#2#3
+   { ( ( #3 ) < \__sankey_get:nn {#2} {#1} - 1e-4 ) * \l__sankey_seam_fp }
+\cs_generate_variant:Nn \__sankey_below:nnn { Vnn , VVn }
 \cs_new_protected:Npn \__sankey_ribbon_seam:nnnnn #1#2#3#4#5
    {
       \use:e
@@ -1486,10 +1501,10 @@
                { \__sankey_point:nn { #1 + #5 * ( #2 - #1 ) } {#3} }
                { \__sankey_point:nn { #2 - #5 * ( #2 - #1 ) } {#4} }
                { \__sankey_point:nn {#2} {#4} }
-               { \__sankey_point:nn {#2} { #4 + \l__sankey_s_fp } }
-               { \__sankey_point:nn { #2 - #5 * ( #2 - #1 ) } { #4 + \l__sankey_s_fp } }
-               { \__sankey_point:nn { #1 + #5 * ( #2 - #1 ) } { #3 + \l__sankey_s_fp } }
-               { \__sankey_point:nn {#1} { #3 + \l__sankey_s_fp } }
+               { \__sankey_point:nn {#2} { #4 + \l__sankey_sb_fp } }
+               { \__sankey_point:nn { #2 - #5 * ( #2 - #1 ) } { #4 + \l__sankey_sb_fp } }
+               { \__sankey_point:nn { #1 + #5 * ( #2 - #1 ) } { #3 + \l__sankey_sa_fp } }
+               { \__sankey_point:nn {#1} { #3 + \l__sankey_sa_fp } }
          }
    }
 
@@ -2651,6 +2666,7 @@
                { \l__sankey_width_fp / 2 } { 0 }
          }
       \fp_set:Nn \l__sankey_oy_fp { \__sankey_get:nV { cu } \l__sankey_a_tl + \l__sankey_width_fp }
+      \tl_set:Nn \l__sankey_bside_tl { outcur }
       % flat, a slope, flat again: a short band of the shape of the other flows
       \__sankey_ribbon:eeeee { \fp_use:N \l__sankey_ox_fp } { \fp_use:N \l__sankey_oy_fp }
          { \__sankey_get:nn { fsa } {#1} } { \__sankey_get:nn { fsb } {#1} } { .5 }
