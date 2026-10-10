@@ -128,8 +128,6 @@
 \tl_new:N \l__sankey_opts_tl
 \tl_new:N \l__sankey_valuepart_tl
 \fp_new:N \l__sankey_val_fp
-\fp_new:N \l__sankey_share_fp
-\fp_new:N \l__sankey_feed_fp
 \fp_new:N \l__sankey_unit_fp
 \fp_new:N \l__sankey_cursor_fp
 \fp_new:N \l__sankey_bottom_fp
@@ -184,6 +182,7 @@
 \clist_new:N \l__sankey_palette_clist
 \clist_new:N \l__sankey_gpalette_clist
 \clist_new:N \l__sankey_titles_clist
+\clist_new:N \l__sankey_srcs_clist
 \tl_new:N \l__sankey_align_tl
 \tl_new:N \l__sankey_fade_tl
 \tl_new:N \l__sankey_layout_tl
@@ -759,7 +758,7 @@
    {
       \seq_clear:N \l__sankey_valid_seq
       \seq_map_inline:Nn \g__sankey_nodes_seq
-         { \__sankey_set:nnn { in } {##1} { 0 } \__sankey_set:nnn { out } {##1} { 0 } }
+         { \__sankey_set:nnn { in } {##1} { 0 } \__sankey_set:nnn { out } {##1} { 0 } \__sankey_set:nnn { srcs } {##1} { } }
       \seq_map_inline:Nn \g__sankey_flows_seq
          {
             \tl_set:Ne \l__sankey_a_tl { \__sankey_get:nn { ffrom } {##1} }
@@ -774,6 +773,10 @@
                            { \fp_eval:n { \__sankey_get:nV { out } \l__sankey_a_tl + \__sankey_get:nn { fval } {##1} } }
                         \__sankey_set:nVe { in } \l__sankey_b_tl
                            { \fp_eval:n { \__sankey_get:nV { in } \l__sankey_b_tl + \__sankey_get:nn { fval } {##1} } }
+                        % the nodes that flow into a node, the base of its share
+                        \clist_set:Ne \l__sankey_srcs_clist { \__sankey_get:nV { srcs } \l__sankey_b_tl , \l__sankey_a_tl }
+                        \clist_remove_duplicates:N \l__sankey_srcs_clist
+                        \__sankey_set:nVV { srcs } \l__sankey_b_tl \l__sankey_srcs_clist
                      }
                      {
                         \msg_error:nneeee { tikz-sankey } { backwards } { \l__sankey_a_tl } { \l__sankey_b_tl }
@@ -900,19 +903,6 @@
             \fp_zero:N \l__sankey_val_fp
             \seq_map_inline:cn { g__sankey_col_##1_seq } { \fp_add:Nn \l__sankey_val_fp { \__sankey_get:nn { v } {####1} } }
             \__sankey_set:nne { colsum } {##1} { \fp_use:N \l__sankey_val_fp }
-            % the base of shares: at least the nodes of the column before that flow on
-            \fp_set_eq:NN \l__sankey_share_fp \l__sankey_val_fp
-            \int_compare:nNnT {##1} > { 0 }
-               {
-                  \fp_zero:N \l__sankey_feed_fp
-                  \seq_map_inline:cn { g__sankey_col_ \int_eval:n { ##1 - 1 } _seq }
-                     {
-                        \fp_compare:nNnT { \__sankey_get:nn { out } {####1} } > { 0 }
-                           { \fp_add:Nn \l__sankey_feed_fp { \__sankey_get:nn { v } {####1} } }
-                     }
-                  \fp_set:Nn \l__sankey_share_fp { max ( \l__sankey_share_fp , \l__sankey_feed_fp ) }
-               }
-            \__sankey_set:nne { colbase } {##1} { \fp_use:N \l__sankey_share_fp }
          }
    }
 \cs_new_protected:Npn \__sankey_sort_column:n #1
@@ -3088,9 +3078,15 @@
       \sankeyPercent { \sankeyNodeInfo { \l__sankey_cur_tl } { value } }
          {
             \IfValueTF {#1} { \sankeyColumnTotal {#1} }
-               { \__sankey_get_or:nen { colbase } { \int_eval:n { \sankeyNodeInfo { \l__sankey_cur_tl } { column } } } { 0 } }
+               {
+                  \tl_if_blank:eTF { \__sankey_get_or:nVn { srcs } \l__sankey_cur_tl { } }
+                     { \sankeyColumnTotal { \sankeyNodeInfo { \l__sankey_cur_tl } { column } } }
+                     { 0 \clist_map_function:eN { \__sankey_get:nV { srcs } \l__sankey_cur_tl } \__sankey_plus_value:n }
+               }
          }
    }
+\cs_new:Npn \__sankey_plus_value:n #1 { + \__sankey_get:nn { v } {#1} }
+\cs_generate_variant:Nn \clist_map_function:nN { e }
 % anywhere
 \NewExpandableDocumentCommand \sankeyColumnTotal { m } { \__sankey_get_or:nen { colsum } { \int_eval:n {#1} } { 0 } }
 \NewDocumentCommand \sankeyNumber { m }
