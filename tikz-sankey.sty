@@ -128,6 +128,8 @@
 \tl_new:N \l__sankey_opts_tl
 \tl_new:N \l__sankey_valuepart_tl
 \fp_new:N \l__sankey_val_fp
+\fp_new:N \l__sankey_share_fp
+\fp_new:N \l__sankey_feed_fp
 \fp_new:N \l__sankey_unit_fp
 \fp_new:N \l__sankey_cursor_fp
 \fp_new:N \l__sankey_bottom_fp
@@ -898,6 +900,19 @@
             \fp_zero:N \l__sankey_val_fp
             \seq_map_inline:cn { g__sankey_col_##1_seq } { \fp_add:Nn \l__sankey_val_fp { \__sankey_get:nn { v } {####1} } }
             \__sankey_set:nne { colsum } {##1} { \fp_use:N \l__sankey_val_fp }
+            % the base of shares: at least the nodes of the column before that flow on
+            \fp_set_eq:NN \l__sankey_share_fp \l__sankey_val_fp
+            \int_compare:nNnT {##1} > { 0 }
+               {
+                  \fp_zero:N \l__sankey_feed_fp
+                  \seq_map_inline:cn { g__sankey_col_ \int_eval:n { ##1 - 1 } _seq }
+                     {
+                        \fp_compare:nNnT { \__sankey_get:nn { out } {####1} } > { 0 }
+                           { \fp_add:Nn \l__sankey_feed_fp { \__sankey_get:nn { v } {####1} } }
+                     }
+                  \fp_set:Nn \l__sankey_share_fp { max ( \l__sankey_share_fp , \l__sankey_feed_fp ) }
+               }
+            \__sankey_set:nne { colbase } {##1} { \fp_use:N \l__sankey_share_fp }
          }
    }
 \cs_new_protected:Npn \__sankey_sort_column:n #1
@@ -3071,7 +3086,10 @@
 \NewDocumentCommand \sankeyShare { o }
    {
       \sankeyPercent { \sankeyNodeInfo { \l__sankey_cur_tl } { value } }
-         { \sankeyColumnTotal { \IfValueTF {#1} {#1} { \sankeyNodeInfo { \l__sankey_cur_tl } { column } } } }
+         {
+            \IfValueTF {#1} { \sankeyColumnTotal {#1} }
+               { \__sankey_get_or:nen { colbase } { \int_eval:n { \sankeyNodeInfo { \l__sankey_cur_tl } { column } } } { 0 } }
+         }
    }
 % anywhere
 \NewExpandableDocumentCommand \sankeyColumnTotal { m } { \__sankey_get_or:nen { colsum } { \int_eval:n {#1} } { 0 } }

@@ -704,7 +704,7 @@ Each node has a \emph{label} and a \emph{value label}. The label names the node 
 \item[\api{sankeyName}] its text: the key \opt{text} of the node, else its name up to an \T{@}.
 \item[\api{sankeyValue}] its value (the key \opt{value}, else the larger of in- and outflow), formatted as \cmd{sankeyNumber} formats numbers.
 \item[\api{sankeyPercentOf}\marg{node}] its value in percent of the value of \meta{node}, formatted as \cmd{sankeyPercent} formats shares.
-\item[\api{sankeyShare}\oarg{column}] its value in percent of the sum of a column (\cmd{sankeyColumnTotal}), by default its own, formatted as \cmd{sankeyPercent} formats shares.
+\item[\api{sankeyShare}\oarg{column}] its value in percent of the sum of a column (\cmd{sankeyColumnTotal}), formatted as \cmd{sankeyPercent} formats shares. Without \meta{column}, it will use the sahre of its own column, or of the nodes in the column before that flow on, if they are more: in \T{a -> b : 2, b -> c : 1, a -> d : 2}, \T{c} is \T{50\%}.
 \end{description}
 \begin{description}
 \item[\key{label}{\meta{text}}, \key{value label}{\meta{text}}] the templates. Empty labels are not drawn. The presets \opt{values} and \opt{percentages} set the value label.
