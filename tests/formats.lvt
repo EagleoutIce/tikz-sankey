@@ -33,6 +33,14 @@
 \end{sankey}
 \end{tikzpicture}
 \TestEq{percentages}{\gotpct}{<100><25><75>}
+% a share is of the nodes that flow in, not of the column: c is half of b, f half of d (issue #1)
+\def\gotpct{}
+\begin{tikzpicture}\sankeySetup{base}
+\begin{sankey}[percentages, label position=none, percent format={\xdef\gotpct{\gotpct<#1>}}]
+  \sankeyFlows{a -> b : 2, b -> c : 1, a -> d : 6, d -> e : 3, d -> f : 3}
+\end{sankey}
+\end{tikzpicture}
+\TestEq{percentages partial}{\gotpct}{<100><25><75><50><50><50>}
 % prefix and suffix
 \def\gotpre{}\def\gotsuf{}
 \begin{tikzpicture}\sankeySetup{base}
